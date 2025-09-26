@@ -91,6 +91,12 @@
         box-shadow: 0 10px 20px rgba(15, 23, 42, 0.08);
       }
 
+      li.auto-approved {
+        background: #dcfce7;
+        border: 1px solid #86efac;
+        box-shadow: 0 10px 20px rgba(22, 163, 74, 0.12);
+      }
+
       .meta {
         font-size: 0.9rem;
         color: #6b7280;
@@ -148,7 +154,11 @@
         </p>
 
         <ul v-if="edits.length">
-          <li v-for="edit in edits" :key="edit.newid || edit.timestamp">
+          <li
+            v-for="edit in edits"
+            :key="edit.newid || edit.timestamp"
+            :class="{ 'auto-approved': edit.auto_approved }"
+          >
             <h2>{{ edit.title }}</h2>
             <p class="meta">
               Edited by <strong>{{ edit.user || 'Unknown editor' }}</strong>

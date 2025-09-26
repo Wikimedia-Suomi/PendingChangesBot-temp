@@ -21,13 +21,19 @@ from .views import (
 class _FakeSite:
     """Simple fake Pywikibot site for testing."""
 
-    def __init__(self, changes: Iterable[dict]):
+    def __init__(self, changes: Iterable[dict], user_info: dict[str, dict] | None = None):
         self._changes = list(changes)
+        self._user_info = user_info or {}
         self.requested_total: int | None = None
+        self.requested_usernames: list[str] | None = None
 
     def recentchanges(self, total: int, **_: object) -> Iterable[dict]:
         self.requested_total = total
         return iter(self._changes)
+
+    def users(self, usernames: Iterable[str]) -> dict[str, dict]:
+        self.requested_usernames = list(usernames)
+        return {username: self._user_info.get(username, {}) for username in self.requested_usernames}
 
 
 class FetchRecentEditsTests(SimpleTestCase):
@@ -61,6 +67,8 @@ class FetchRecentEditsTests(SimpleTestCase):
         self.assertEqual(len(result), 1)
         self.assertEqual(fake_site.requested_total, 1)
         self.assertEqual(result[0]['title'], 'Page 1')
+        self.assertIn('user_groups', result[0])
+        self.assertEqual(result[0]['user_groups'], [])
 
     def test_returns_empty_list_for_non_positive_limit(self) -> None:
         result = fetch_recent_edits('fi', limit=0, site_factory=lambda _: _FakeSite([]))
@@ -73,9 +81,31 @@ class FetchRecentEditsTests(SimpleTestCase):
         with self.assertRaises(RecentChangesError):
             fetch_recent_edits('fi', site_factory=failing_factory)
 
+    def test_populates_user_groups_when_available(self) -> None:
+        changes = [
+            {
+                'title': 'Page 3',
+                'user': 'UserC',
+                'timestamp': '2023-01-02T00:00:00Z',
+                'comment': 'Another comment',
+                'old_revid': 5,
+                'revid': 6,
+                'type': 'edit',
+            }
+        ]
+        fake_site = _FakeSite(
+            changes,
+            user_info={'UserC': {'groups': ['Sysop', ' Reviewer ', 42, None]}},
+        )
+
+        result = fetch_recent_edits('fi', site_factory=lambda _: fake_site)
+
+        self.assertEqual(fake_site.requested_usernames, ['UserC'])
+        self.assertEqual(result[0]['user_groups'], ['sysop', 'reviewer'])
+
 
 @override_settings(ROOT_URLCONF='wiki_edits.urls')
-class RecentEditsViewTests(SimpleTestCase):
+class RecentEditsViewTests(TestCase):
     """Tests for the API view."""
 
     def setUp(self) -> None:
@@ -92,6 +122,7 @@ class RecentEditsViewTests(SimpleTestCase):
                 'oldid': 1,
                 'newid': 2,
                 'type': 'edit',
+                'user_groups': ['sysop'],
             }
         ]
 
@@ -102,6 +133,7 @@ class RecentEditsViewTests(SimpleTestCase):
         self.assertEqual(payload['language'], 'fi')
         self.assertEqual(len(payload['edits']), 1)
         mock_fetch.assert_called_once_with('fi', limit=DEFAULT_EDIT_LIMIT)
+        self.assertTrue(payload['edits'][0]['auto_approved'])
 
     def test_rejects_unsupported_language(self) -> None:
         response = self.client.get(f"{reverse('recentchanges:recent_edits')}?lang=sv")
@@ -125,6 +157,7 @@ class RecentEditsViewTests(SimpleTestCase):
         mock_fetch.assert_called_once_with('fi', limit=MAX_EDIT_LIMIT)
         payload = response.json()
         self.assertEqual(payload['limit'], MAX_EDIT_LIMIT)
+        self.assertEqual(payload['edits'], [])
 
     @patch('recentchanges.views.fetch_recent_edits')
     def test_invalid_limit_falls_back_to_default(self, mock_fetch) -> None:
@@ -138,6 +171,7 @@ class RecentEditsViewTests(SimpleTestCase):
         mock_fetch.assert_called_once_with('fi', limit=DEFAULT_EDIT_LIMIT)
         payload = response.json()
         self.assertEqual(payload['limit'], DEFAULT_EDIT_LIMIT)
+        self.assertEqual(payload['edits'], [])
 
     @patch('recentchanges.views.fetch_recent_edits')
     def test_limit_parameter_respects_minimum(self, mock_fetch) -> None:
@@ -151,6 +185,29 @@ class RecentEditsViewTests(SimpleTestCase):
         mock_fetch.assert_called_once_with('fi', limit=MIN_EDIT_LIMIT)
         payload = response.json()
         self.assertEqual(payload['limit'], MIN_EDIT_LIMIT)
+        self.assertEqual(payload['edits'], [])
+
+    @patch('recentchanges.views.fetch_recent_edits')
+    def test_auto_approved_flag_respects_configuration(self, mock_fetch) -> None:
+        WikiConfiguration.objects.create(language_code='fi', auto_approve_groups=['bot'])
+        mock_fetch.return_value = [
+            {
+                'title': 'Page 1',
+                'user': 'UserB',
+                'timestamp': '2023-01-01T00:00:00Z',
+                'comment': 'Example comment',
+                'oldid': 1,
+                'newid': 2,
+                'type': 'edit',
+                'user_groups': ['sysop'],
+            }
+        ]
+
+        response = self.client.get(f"{reverse('recentchanges:recent_edits')}?lang=fi")
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertFalse(payload['edits'][0]['auto_approved'])
 
 
 @override_settings(ROOT_URLCONF='wiki_edits.urls')

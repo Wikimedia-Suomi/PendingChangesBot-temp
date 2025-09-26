@@ -47,6 +47,9 @@ def _normalize_groups(groups: list[str]) -> list[str]:
     return normalized
 
 
+DEFAULT_NORMALIZED_AUTO_APPROVE_GROUPS = _normalize_groups(DEFAULT_AUTO_APPROVE_GROUPS)
+
+
 class RecentEditsPageView(TemplateView):
     """Render the single-page interface for browsing recent edits."""
 
@@ -103,12 +106,33 @@ class RecentEditsView(View):
         except RecentChangesError as exc:
             return JsonResponse({'error': str(exc)}, status=503)
 
+        config, _ = WikiConfiguration.objects.get_or_create(
+            language_code=language,
+            defaults={'auto_approve_groups': list(DEFAULT_NORMALIZED_AUTO_APPROVE_GROUPS)},
+        )
+        normalized_auto_groups = set(_normalize_groups(config.auto_approve_groups or []))
+
+        annotated_edits: list[dict[str, Any]] = []
+        for edit in edits:
+            normalized_user_groups = [
+                group.strip().lower()
+                for group in edit.get('user_groups', [])
+                if isinstance(group, str) and group.strip()
+            ]
+            annotated_edits.append(
+                {
+                    **edit,
+                    'user_groups': normalized_user_groups,
+                    'auto_approved': bool(normalized_auto_groups.intersection(normalized_user_groups)),
+                }
+            )
+
         return JsonResponse(
             {
                 'language': language,
                 'supported_languages': sorted(SUPPORTED_LANGUAGES),
                 'limit': limit,
-                'edits': edits,
+                'edits': annotated_edits,
             }
         )
 
