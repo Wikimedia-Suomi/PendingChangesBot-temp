@@ -1,14 +1,21 @@
 """Unit tests for the recentchanges app."""
 from __future__ import annotations
 
+import json
 from typing import Iterable
 from unittest.mock import patch
 
-from django.test import Client, SimpleTestCase, override_settings
+from django.test import Client, SimpleTestCase, TestCase, override_settings
 from django.urls import reverse
 
 from .services import RecentChangesError, fetch_recent_edits
-from .views import DEFAULT_EDIT_LIMIT, MAX_EDIT_LIMIT, MIN_EDIT_LIMIT
+from .models import WikiConfiguration
+from .views import (
+    DEFAULT_AUTO_APPROVE_GROUPS,
+    DEFAULT_EDIT_LIMIT,
+    MAX_EDIT_LIMIT,
+    MIN_EDIT_LIMIT,
+)
 
 
 class _FakeSite:
@@ -176,3 +183,52 @@ class ConfigPageViewTests(SimpleTestCase):
         self.assertIn('supported_languages_json', response.context)
         self.assertIn('default_language', response.context)
         self.assertIn('default_edit_limit', response.context)
+
+
+@override_settings(ROOT_URLCONF='wiki_edits.urls')
+class WikiConfigurationViewTests(TestCase):
+    """Tests for the per-wiki configuration API."""
+
+    def setUp(self) -> None:
+        self.client = Client()
+
+    def test_get_initializes_with_defaults(self) -> None:
+        response = self.client.get(f"{reverse('recentchanges:wiki_config')}?lang=fi")
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload['language'], 'fi')
+        self.assertEqual(
+            payload['auto_approve_groups'],
+            DEFAULT_AUTO_APPROVE_GROUPS,
+        )
+        config = WikiConfiguration.objects.get(language_code='fi')
+        self.assertEqual(config.auto_approve_groups, DEFAULT_AUTO_APPROVE_GROUPS)
+
+    def test_post_updates_auto_approve_groups(self) -> None:
+        url = reverse('recentchanges:wiki_config')
+        response = self.client.post(
+            url,
+            data=json.dumps(
+                {
+                    'language': 'fi',
+                    'auto_approve_groups': ['sysop', 'bot'],
+                }
+            ),
+            content_type='application/json',
+        )
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload['auto_approve_groups'], ['sysop', 'bot'])
+        config = WikiConfiguration.objects.get(language_code='fi')
+        self.assertEqual(config.auto_approve_groups, ['sysop', 'bot'])
+
+    def test_post_rejects_invalid_payload(self) -> None:
+        url = reverse('recentchanges:wiki_config')
+        response = self.client.post(
+            url,
+            data=json.dumps({'language': 'fi', 'auto_approve_groups': 'sysop'}),
+            content_type='application/json',
+        )
+        self.assertEqual(response.status_code, 400)
+        payload = response.json()
+        self.assertIn('auto_approve_groups', payload['error'])

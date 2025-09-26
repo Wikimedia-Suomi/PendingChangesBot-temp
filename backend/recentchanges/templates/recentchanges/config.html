@@ -87,9 +87,18 @@
         color: #059669;
       }
 
+      .status.error {
+        color: #b91c1c;
+      }
+
       .hint {
         font-size: 0.9rem;
         color: #6b7280;
+        display: block;
+      }
+
+      .hint.error {
+        color: #b91c1c;
       }
     </style>
   </head>
@@ -108,6 +117,7 @@
         Your settings are saved in your browser.
       </p>
       <form id="config-form">
+        {% csrf_token %}
         <label>
           Default language
           <select id="language"></select>
@@ -116,6 +126,21 @@
           Maximum edits to fetch
           <input type="number" id="limit" min="{{ min_edit_limit }}" max="{{ max_edit_limit }}" step="1" />
           <span class="hint">Between {{ min_edit_limit }} and {{ max_edit_limit }} edits.</span>
+        </label>
+        <label>
+          Automatically approve edits from user groups
+          <select id="auto-approve-groups" name="auto_approve_groups" multiple size="7"></select>
+          <span class="hint">
+            Choose which user groups should have their edits approved automatically.
+            <a
+              id="group-rights-link"
+              href="https://{{ default_language|default:'en' }}.wikipedia.org/wiki/Special:ListGroupRights"
+              target="_blank"
+              rel="noreferrer noopener"
+              >View user group rights</a
+            >
+          </span>
+          <span class="hint" id="groups-status"></span>
         </label>
         <button type="submit">Save preferences</button>
         <p class="status" id="status" role="status" aria-live="polite"></p>
@@ -128,6 +153,13 @@
       const defaultEditLimit = Number('{{ default_edit_limit|escapejs }}') || 50;
       const minEditLimit = Number('{{ min_edit_limit|escapejs }}') || 1;
       const maxEditLimit = Number('{{ max_edit_limit|escapejs }}') || 200;
+      const wikiConfigApiUrl = '{{ wiki_config_api_url|escapejs }}';
+      const availableAutoApproveGroups = JSON.parse(
+        '{{ available_auto_approve_groups_json|escapejs }}',
+      );
+      const defaultAutoApproveGroups = JSON.parse(
+        '{{ default_auto_approve_groups_json|escapejs }}',
+      );
       const storageKey = 'recentChangesPreferences';
 
       const clampLimit = (value) => {
@@ -166,6 +198,39 @@
       const languageSelect = document.getElementById('language');
       const limitInput = document.getElementById('limit');
       const statusElement = document.getElementById('status');
+      const autoApproveSelect = document.getElementById('auto-approve-groups');
+      const groupStatusElement = document.getElementById('groups-status');
+      const groupRightsLink = document.getElementById('group-rights-link');
+      const csrfTokenInput = document.querySelector(
+        '#config-form input[name="csrfmiddlewaretoken"]',
+      );
+      let statusClearTimeout;
+
+      const setStatus = (message, isError = false) => {
+        if (!statusElement) {
+          return;
+        }
+        statusElement.textContent = message;
+        const shouldFlagError = Boolean(isError && message);
+        statusElement.classList.toggle('error', shouldFlagError);
+        if (!message) {
+          return;
+        }
+        window.clearTimeout(statusClearTimeout);
+        statusClearTimeout = window.setTimeout(() => {
+          statusElement.textContent = '';
+          statusElement.classList.remove('error');
+        }, 4000);
+      };
+
+      const setGroupStatus = (message, isError = false) => {
+        if (!groupStatusElement) {
+          return;
+        }
+        groupStatusElement.textContent = message;
+        const shouldFlagError = Boolean(isError && message);
+        groupStatusElement.classList.toggle('error', shouldFlagError);
+      };
 
       const renderLanguages = () => {
         languageSelect.innerHTML = '';
@@ -174,6 +239,16 @@
           option.value = lang;
           option.textContent = lang.toUpperCase();
           languageSelect.appendChild(option);
+        });
+      };
+
+      const renderAutoApproveOptions = () => {
+        autoApproveSelect.innerHTML = '';
+        availableAutoApproveGroups.forEach((group) => {
+          const option = document.createElement('option');
+          option.value = group;
+          option.textContent = group;
+          autoApproveSelect.appendChild(option);
         });
       };
 
@@ -186,12 +261,72 @@
         const limit = clampLimit(preferences.limit);
         languageSelect.value = selectedLanguage;
         limitInput.value = limit;
+        return selectedLanguage;
       };
 
-      renderLanguages();
-      populateForm();
+      const setSelectedAutoApproveGroups = (groups) => {
+        const normalized = Array.isArray(groups)
+          ? groups.map((group) => String(group).toLowerCase())
+          : [];
+        Array.from(autoApproveSelect.options).forEach((option) => {
+          option.selected = normalized.includes(option.value.toLowerCase());
+        });
+      };
 
-      document.getElementById('config-form').addEventListener('submit', (event) => {
+      const updateGroupRightsLink = (language) => {
+        if (!groupRightsLink) {
+          return;
+        }
+        const safeLanguage = supportedLanguages.includes(language) ? language : defaultLanguage;
+        const urlLanguage = safeLanguage || 'en';
+        groupRightsLink.href = `https://${urlLanguage}.wikipedia.org/wiki/Special:ListGroupRights`;
+      };
+
+      const loadWikiConfiguration = async (language) => {
+        if (!wikiConfigApiUrl) {
+          setSelectedAutoApproveGroups(defaultAutoApproveGroups);
+          return;
+        }
+        setGroupStatus('Loading wiki settings…');
+        try {
+          const response = await fetch(
+            `${wikiConfigApiUrl}?lang=${encodeURIComponent(language)}`,
+            {
+              credentials: 'same-origin',
+            },
+          );
+          if (!response.ok) {
+            throw new Error(`Failed to load configuration (${response.status})`);
+          }
+          const data = await response.json();
+          const groups = Array.isArray(data.auto_approve_groups)
+            ? data.auto_approve_groups
+            : defaultAutoApproveGroups;
+          setSelectedAutoApproveGroups(groups);
+          setGroupStatus('');
+        } catch (error) {
+          console.warn('Failed to load wiki configuration:', error);
+          setSelectedAutoApproveGroups(defaultAutoApproveGroups);
+          setGroupStatus('Failed to load wiki settings; defaults shown.', true);
+        }
+      };
+
+      const getSelectedAutoApproveGroups = () =>
+        Array.from(autoApproveSelect.selectedOptions).map((option) => option.value);
+
+      renderLanguages();
+      renderAutoApproveOptions();
+      const initialLanguage = populateForm();
+      updateGroupRightsLink(initialLanguage);
+      loadWikiConfiguration(initialLanguage);
+
+      languageSelect.addEventListener('change', (event) => {
+        const selectedLanguage = event.target.value;
+        updateGroupRightsLink(selectedLanguage);
+        loadWikiConfiguration(selectedLanguage);
+      });
+
+      document.getElementById('config-form').addEventListener('submit', async (event) => {
         event.preventDefault();
         const selectedLanguage = languageSelect.value;
         const limit = clampLimit(limitInput.value);
@@ -203,10 +338,44 @@
           limit,
         };
         persistPreferences(preferences);
-        statusElement.textContent = 'Preferences saved successfully!';
-        setTimeout(() => {
-          statusElement.textContent = '';
-        }, 3000);
+        setStatus('Saving preferences…');
+
+        if (!wikiConfigApiUrl) {
+          setStatus('Preferences saved successfully!');
+          return;
+        }
+
+        try {
+          const response = await fetch(wikiConfigApiUrl, {
+            method: 'POST',
+            credentials: 'same-origin',
+            headers: {
+              'Content-Type': 'application/json',
+              'X-CSRFToken': csrfTokenInput ? csrfTokenInput.value : '',
+              Accept: 'application/json',
+            },
+            body: JSON.stringify({
+              language: selectedLanguage,
+              auto_approve_groups: getSelectedAutoApproveGroups(),
+            }),
+          });
+          if (!response.ok) {
+            throw new Error(`Failed to save configuration (${response.status})`);
+          }
+          const data = await response.json();
+          const groups = Array.isArray(data.auto_approve_groups)
+            ? data.auto_approve_groups
+            : getSelectedAutoApproveGroups();
+          setSelectedAutoApproveGroups(groups);
+          setGroupStatus('');
+          setStatus('Preferences saved successfully!');
+        } catch (error) {
+          console.warn('Failed to save wiki configuration:', error);
+          setStatus(
+            'Saved local preferences, but updating wiki settings failed.',
+            true,
+          );
+        }
       });
     </script>
   </body>
