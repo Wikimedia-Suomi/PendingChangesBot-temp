@@ -1,24 +1,18 @@
 # PendingChangesBot
 
-PendingChangesBot is a Django-based application that monitors recent changes on Wikimedia projects. The repository contains a backend Django project and a React frontend. The instructions below help you set up a local development environment and run the available quality checks.
-
-## Prerequisites
-
-- Python 3.11 or newer
-- [pip](https://pip.pypa.io/en/stable/installation/)
-- (Optional) [virtualenv](https://virtualenv.pypa.io/en/latest/) or another tool for managing Python virtual environments
+PendingChangesBot is an application which tracks pending changes in Wikimedia Projects.
 
 ## Installation
 
 1. **Clone the repository**
    ```bash
-   git clone <repository-url>
+   git clone git@github.com:Wikimedia-Suomi/PendingChangesBot-temp.git
    cd PendingChangesBot-temp
    ```
 2. **Create and activate a virtual environment** (recommended)
    ```bash
-   python -m venv .venv
-   source .venv/bin/activate  # On Windows use: .venv\\Scripts\\activate
+   python3 -m venv venv
+   source venv/bin/activate  # On Windows use: .venv\\Scripts\\activate
    ```
 3. **Install Python dependencies**
    ```bash
