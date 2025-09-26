@@ -16,15 +16,35 @@
         padding: 0;
       }
 
+      .top-bar {
+        background: white;
+        border-bottom: 1px solid #e5e7eb;
+        padding: 0.75rem 1.5rem;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 1rem;
+        position: sticky;
+        top: 0;
+        z-index: 10;
+      }
+
+      .brand {
+        font-weight: 600;
+        font-size: 1.1rem;
+      }
+
+      .nav-actions {
+        display: flex;
+        align-items: center;
+        gap: 1rem;
+        flex-wrap: wrap;
+      }
+
       main {
         max-width: 960px;
         margin: 0 auto;
-        padding: 2rem 1.5rem 4rem;
-      }
-
-      h1 {
-        text-align: center;
-        margin-bottom: 1.5rem;
+        padding: 2.5rem 1.5rem 4rem;
       }
 
       .controls {
@@ -100,9 +120,9 @@
   <body>
     {% verbatim %}
     <div id="app">
-      <main>
-        <h1>Wikipedia Recent Edits</h1>
-        <section class="controls">
+      <header class="top-bar">
+        <div class="brand">Wikipedia Recent Edits</div>
+        <div class="nav-actions">
           <label>
             Language
             <select v-model="selectedLanguage" @change="fetchEdits">
@@ -111,9 +131,15 @@
               </option>
             </select>
           </label>
+          <a :href="configUrl">Config</a>
+        </div>
+      </header>
+      <main>
+        <section class="controls">
           <button type="button" @click="fetchEdits" :disabled="loading">
             {{ loading ? 'Loading…' : 'Refresh' }}
           </button>
+          <p class="meta">Showing up to {{ limit }} recent edits.</p>
         </section>
 
         <p class="error" v-if="error">{{ error }}</p>
@@ -145,33 +171,104 @@
       const supportedLanguages = JSON.parse('{{ supported_languages_json|escapejs }}');
       const defaultLanguage = '{{ default_language|escapejs }}';
       const apiUrl = '{{ api_url|escapejs }}';
+      const configUrl = '{{ config_url|escapejs }}';
+      const defaultEditLimit = Number('{{ default_edit_limit|escapejs }}') || 50;
+      const minEditLimit = Number('{{ min_edit_limit|escapejs }}') || 1;
+      const maxEditLimit = Number('{{ max_edit_limit|escapejs }}') || 200;
+
+      const storageKey = 'recentChangesPreferences';
+
+      const clampLimit = (value) => {
+        const parsed = Number.parseInt(value ?? defaultEditLimit, 10);
+        if (!Number.isFinite(parsed)) {
+          return defaultEditLimit;
+        }
+        return Math.min(maxEditLimit, Math.max(minEditLimit, parsed));
+      };
+
+      const loadPreferences = () => {
+        try {
+          const raw = localStorage.getItem(storageKey);
+          if (!raw) {
+            return {};
+          }
+          const parsed = JSON.parse(raw);
+          if (!parsed || typeof parsed !== 'object') {
+            return {};
+          }
+          return parsed;
+        } catch (error) {
+          console.warn('Failed to load preferences:', error);
+          return {};
+        }
+      };
+
+      const savePreferencesToStorage = (preferences) => {
+        try {
+          localStorage.setItem(storageKey, JSON.stringify(preferences));
+        } catch (error) {
+          console.warn('Failed to save preferences:', error);
+        }
+      };
 
       const { createApp } = Vue;
 
       createApp({
         data() {
+          const savedPreferences = loadPreferences();
+          const initialLanguage =
+            savedPreferences.language && supportedLanguages.includes(savedPreferences.language)
+              ? savedPreferences.language
+              : defaultLanguage;
+          const initialLimit = clampLimit(savedPreferences.limit);
           return {
             languages: supportedLanguages,
-            selectedLanguage: defaultLanguage,
+            selectedLanguage: initialLanguage,
+            limit: initialLimit,
             edits: [],
             error: '',
             loading: false,
+            configUrl,
           };
         },
         mounted() {
+          this.savePreferences();
           this.fetchEdits();
         },
+        watch: {
+          selectedLanguage(newLanguage) {
+            if (!this.languages.includes(newLanguage)) {
+              return;
+            }
+            this.savePreferences();
+          },
+        },
         methods: {
+          savePreferences() {
+            const preferences = {
+              language: this.selectedLanguage,
+              limit: clampLimit(this.limit),
+            };
+            savePreferencesToStorage(preferences);
+          },
           async fetchEdits() {
             this.loading = true;
             this.error = '';
             try {
-              const response = await fetch(`${apiUrl}?lang=${this.selectedLanguage}`);
+              const params = new URLSearchParams({
+                lang: this.selectedLanguage,
+                limit: String(clampLimit(this.limit)),
+              });
+              const response = await fetch(`${apiUrl}?${params.toString()}`);
               if (!response.ok) {
                 throw new Error(`Failed to load data (status ${response.status})`);
               }
               const payload = await response.json();
               this.edits = payload.edits || [];
+              if (typeof payload.limit === 'number') {
+                this.limit = clampLimit(payload.limit);
+                this.savePreferences();
+              }
             } catch (error) {
               this.error = error.message || 'Failed to load data.';
               this.edits = [];

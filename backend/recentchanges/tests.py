@@ -8,6 +8,7 @@ from django.test import Client, SimpleTestCase, override_settings
 from django.urls import reverse
 
 from .services import RecentChangesError, fetch_recent_edits
+from .views import DEFAULT_EDIT_LIMIT, MAX_EDIT_LIMIT, MIN_EDIT_LIMIT
 
 
 class _FakeSite:
@@ -93,7 +94,7 @@ class RecentEditsViewTests(SimpleTestCase):
         payload = response.json()
         self.assertEqual(payload['language'], 'fi')
         self.assertEqual(len(payload['edits']), 1)
-        mock_fetch.assert_called_once_with('fi')
+        mock_fetch.assert_called_once_with('fi', limit=DEFAULT_EDIT_LIMIT)
 
     def test_rejects_unsupported_language(self) -> None:
         response = self.client.get(f"{reverse('recentchanges:recent_edits')}?lang=sv")
@@ -103,7 +104,46 @@ class RecentEditsViewTests(SimpleTestCase):
     def test_handles_service_errors(self, mock_fetch) -> None:
         response = self.client.get(f"{reverse('recentchanges:recent_edits')}?lang=fi")
         self.assertEqual(response.status_code, 503)
-        mock_fetch.assert_called_once_with('fi')
+        mock_fetch.assert_called_once_with('fi', limit=DEFAULT_EDIT_LIMIT)
+
+    @patch('recentchanges.views.fetch_recent_edits')
+    def test_limit_parameter_is_clamped(self, mock_fetch) -> None:
+        mock_fetch.return_value = []
+
+        response = self.client.get(
+            f"{reverse('recentchanges:recent_edits')}?lang=fi&limit={MAX_EDIT_LIMIT + 50}"
+        )
+
+        self.assertEqual(response.status_code, 200)
+        mock_fetch.assert_called_once_with('fi', limit=MAX_EDIT_LIMIT)
+        payload = response.json()
+        self.assertEqual(payload['limit'], MAX_EDIT_LIMIT)
+
+    @patch('recentchanges.views.fetch_recent_edits')
+    def test_invalid_limit_falls_back_to_default(self, mock_fetch) -> None:
+        mock_fetch.return_value = []
+
+        response = self.client.get(
+            f"{reverse('recentchanges:recent_edits')}?lang=fi&limit=not-a-number"
+        )
+
+        self.assertEqual(response.status_code, 200)
+        mock_fetch.assert_called_once_with('fi', limit=DEFAULT_EDIT_LIMIT)
+        payload = response.json()
+        self.assertEqual(payload['limit'], DEFAULT_EDIT_LIMIT)
+
+    @patch('recentchanges.views.fetch_recent_edits')
+    def test_limit_parameter_respects_minimum(self, mock_fetch) -> None:
+        mock_fetch.return_value = []
+
+        response = self.client.get(
+            f"{reverse('recentchanges:recent_edits')}?lang=fi&limit={MIN_EDIT_LIMIT - 5}"
+        )
+
+        self.assertEqual(response.status_code, 200)
+        mock_fetch.assert_called_once_with('fi', limit=MIN_EDIT_LIMIT)
+        payload = response.json()
+        self.assertEqual(payload['limit'], MIN_EDIT_LIMIT)
 
 
 @override_settings(ROOT_URLCONF='wiki_edits.urls')
@@ -119,3 +159,20 @@ class RecentEditsPageViewTests(SimpleTestCase):
         self.assertIn('supported_languages_json', response.context)
         self.assertIn('default_language', response.context)
         self.assertIn('api_url', response.context)
+        self.assertIn('config_url', response.context)
+        self.assertIn('default_edit_limit', response.context)
+
+
+@override_settings(ROOT_URLCONF='wiki_edits.urls')
+class ConfigPageViewTests(SimpleTestCase):
+    """Tests for the configuration page."""
+
+    def setUp(self) -> None:
+        self.client = Client()
+
+    def test_config_page_renders(self) -> None:
+        response = self.client.get(reverse('recentchanges:config_page'))
+        self.assertEqual(response.status_code, 200)
+        self.assertIn('supported_languages_json', response.context)
+        self.assertIn('default_language', response.context)
+        self.assertIn('default_edit_limit', response.context)
