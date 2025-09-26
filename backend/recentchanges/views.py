@@ -10,12 +10,41 @@ from django.views import View
 from django.views.generic import TemplateView
 
 from .services import RecentChangesError, fetch_recent_edits
+from .models import WikiConfiguration
 
 SUPPORTED_LANGUAGES = {'fi', 'en', 'hu', 'pl'}
 DEFAULT_LANGUAGE = 'fi'
 DEFAULT_EDIT_LIMIT = 50
 MIN_EDIT_LIMIT = 1
 MAX_EDIT_LIMIT = 200
+DEFAULT_AUTO_APPROVE_GROUPS = [
+    'sysop',
+    'bot',
+    'reviewer',
+    'editor',
+    'patroller',
+    'autoreview',
+    'autoreviewer',
+]
+AVAILABLE_AUTO_APPROVE_GROUPS = list(dict.fromkeys(DEFAULT_AUTO_APPROVE_GROUPS))
+
+
+def _normalize_groups(groups: list[str]) -> list[str]:
+    """Return a list of valid, de-duplicated groups in display order."""
+
+    order = {group: index for index, group in enumerate(AVAILABLE_AUTO_APPROVE_GROUPS)}
+    seen: set[str] = set()
+    normalized: list[str] = []
+    for group in groups:
+        if not isinstance(group, str):
+            continue
+        name = group.strip().lower()
+        if not name or name not in order or name in seen:
+            continue
+        seen.add(name)
+        normalized.append(name)
+    normalized.sort(key=lambda value: order[value])
+    return normalized
 
 
 class RecentEditsPageView(TemplateView):
@@ -28,7 +57,9 @@ class RecentEditsPageView(TemplateView):
         supported_languages = sorted(SUPPORTED_LANGUAGES)
         if supported_languages:
             default_language = (
-                DEFAULT_LANGUAGE if DEFAULT_LANGUAGE in SUPPORTED_LANGUAGES else supported_languages[0]
+                DEFAULT_LANGUAGE
+                if DEFAULT_LANGUAGE in SUPPORTED_LANGUAGES
+                else supported_languages[0]
             )
         else:
             default_language = ''
@@ -91,7 +122,9 @@ class ConfigPageView(TemplateView):
         context = super().get_context_data(**kwargs)
         supported_languages = sorted(SUPPORTED_LANGUAGES)
         default_language = (
-            DEFAULT_LANGUAGE if DEFAULT_LANGUAGE in SUPPORTED_LANGUAGES else (supported_languages[0] if supported_languages else '')
+            DEFAULT_LANGUAGE
+            if DEFAULT_LANGUAGE in SUPPORTED_LANGUAGES
+            else (supported_languages[0] if supported_languages else '')
         )
         context.update(
             {
@@ -102,6 +135,74 @@ class ConfigPageView(TemplateView):
                 'default_edit_limit': DEFAULT_EDIT_LIMIT,
                 'min_edit_limit': MIN_EDIT_LIMIT,
                 'max_edit_limit': MAX_EDIT_LIMIT,
+                'wiki_config_api_url': reverse('recentchanges:wiki_config'),
+                'available_auto_approve_groups_json': json.dumps(AVAILABLE_AUTO_APPROVE_GROUPS),
+                'default_auto_approve_groups_json': json.dumps(DEFAULT_AUTO_APPROVE_GROUPS),
             }
         )
         return context
+
+
+class WikiConfigurationView(View):
+    """Provide read/write access to per-wiki configuration."""
+
+    def get(self, request, *args, **kwargs):  # type: ignore[override]
+        language = (request.GET.get('lang') or DEFAULT_LANGUAGE).lower()
+        if language not in SUPPORTED_LANGUAGES:
+            return JsonResponse(
+                {
+                    'error': 'Unsupported language code.',
+                    'supported_languages': sorted(SUPPORTED_LANGUAGES),
+                },
+                status=400,
+            )
+
+        config, _ = WikiConfiguration.objects.get_or_create(
+            language_code=language,
+            defaults={'auto_approve_groups': _normalize_groups(DEFAULT_AUTO_APPROVE_GROUPS)},
+        )
+        return JsonResponse(
+            {
+                'language': language,
+                'auto_approve_groups': _normalize_groups(config.auto_approve_groups or []),
+                'available_auto_approve_groups': AVAILABLE_AUTO_APPROVE_GROUPS,
+            }
+        )
+
+    def post(self, request, *args, **kwargs):  # type: ignore[override]
+        try:
+            body = request.body.decode('utf-8') or '{}'
+            payload = json.loads(body)
+        except json.JSONDecodeError:
+            return JsonResponse({'error': 'Invalid JSON payload.'}, status=400)
+
+        language = (payload.get('language') or DEFAULT_LANGUAGE).lower()
+        if language not in SUPPORTED_LANGUAGES:
+            return JsonResponse(
+                {
+                    'error': 'Unsupported language code.',
+                    'supported_languages': sorted(SUPPORTED_LANGUAGES),
+                },
+                status=400,
+            )
+
+        groups = payload.get('auto_approve_groups')
+        if not isinstance(groups, list):
+            return JsonResponse({'error': 'auto_approve_groups must be a list.'}, status=400)
+
+        normalized_groups = _normalize_groups(groups)
+
+        config, _ = WikiConfiguration.objects.get_or_create(
+            language_code=language,
+            defaults={'auto_approve_groups': _normalize_groups(DEFAULT_AUTO_APPROVE_GROUPS)},
+        )
+        config.auto_approve_groups = normalized_groups
+        config.save(update_fields=['auto_approve_groups'])
+
+        return JsonResponse(
+            {
+                'language': language,
+                'auto_approve_groups': config.auto_approve_groups,
+                'available_auto_approve_groups': AVAILABLE_AUTO_APPROVE_GROUPS,
+            }
+        )
