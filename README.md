@@ -20,6 +20,17 @@ PendingChangesBot is an application which tracks pending changes in Wikimedia Pr
    pip install -r requirements.txt
    ```
 
+## Running the application
+
+The Django project now serves both the API and the single-page frontend from the same codebase.
+
+```bash
+cd backend
+python manage.py runserver
+```
+
+Open <http://127.0.0.1:8000/> in your browser to use the interface. The JSON API continues to be available at <http://127.0.0.1:8000/api/recent-edits/>.
+
 ## Running unit tests
 
 Unit tests live in the Django backend project. Run them from the `backend/` directory so Django can locate the correct settings module.

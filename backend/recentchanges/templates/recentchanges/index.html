@@ -98,6 +98,7 @@
     </style>
   </head>
   <body>
+    {% verbatim %}
     <div id="app">
       <main>
         <h1>Wikipedia Recent Edits</h1>
@@ -137,16 +138,21 @@
         </ul>
       </main>
     </div>
+    {% endverbatim %}
 
     <script src="https://unpkg.com/vue@3/dist/vue.global.prod.js"></script>
     <script>
+      const supportedLanguages = JSON.parse('{{ supported_languages_json|escapejs }}');
+      const defaultLanguage = '{{ default_language|escapejs }}';
+      const apiUrl = '{{ api_url|escapejs }}';
+
       const { createApp } = Vue;
 
       createApp({
         data() {
           return {
-            languages: ['fi', 'en'],
-            selectedLanguage: 'fi',
+            languages: supportedLanguages,
+            selectedLanguage: defaultLanguage,
             edits: [],
             error: '',
             loading: false,
@@ -160,7 +166,7 @@
             this.loading = true;
             this.error = '';
             try {
-              const response = await fetch(`/api/recent-edits/?lang=${this.selectedLanguage}`);
+              const response = await fetch(`${apiUrl}?lang=${this.selectedLanguage}`);
               if (!response.ok) {
                 throw new Error(`Failed to load data (status ${response.status})`);
               }
