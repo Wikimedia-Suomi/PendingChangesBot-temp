@@ -5,6 +5,7 @@ from typing import Iterable
 from unittest.mock import patch
 
 from django.test import Client, SimpleTestCase, override_settings
+from django.urls import reverse
 
 from .services import RecentChangesError, fetch_recent_edits
 
@@ -86,7 +87,7 @@ class RecentEditsViewTests(SimpleTestCase):
             }
         ]
 
-        response = self.client.get('/api/recent-edits/?lang=fi')
+        response = self.client.get(f"{reverse('recentchanges:recent_edits')}?lang=fi")
 
         self.assertEqual(response.status_code, 200)
         payload = response.json()
@@ -95,11 +96,26 @@ class RecentEditsViewTests(SimpleTestCase):
         mock_fetch.assert_called_once_with('fi')
 
     def test_rejects_unsupported_language(self) -> None:
-        response = self.client.get('/api/recent-edits/?lang=sv')
+        response = self.client.get(f"{reverse('recentchanges:recent_edits')}?lang=sv")
         self.assertEqual(response.status_code, 400)
 
     @patch('recentchanges.views.fetch_recent_edits', side_effect=RecentChangesError('boom'))
     def test_handles_service_errors(self, mock_fetch) -> None:
-        response = self.client.get('/api/recent-edits/?lang=fi')
+        response = self.client.get(f"{reverse('recentchanges:recent_edits')}?lang=fi")
         self.assertEqual(response.status_code, 503)
         mock_fetch.assert_called_once_with('fi')
+
+
+@override_settings(ROOT_URLCONF='wiki_edits.urls')
+class RecentEditsPageViewTests(SimpleTestCase):
+    """Tests for the frontend page view."""
+
+    def setUp(self) -> None:
+        self.client = Client()
+
+    def test_page_renders_successfully(self) -> None:
+        response = self.client.get(reverse('recentchanges:recent_edits_page'))
+        self.assertEqual(response.status_code, 200)
+        self.assertIn('supported_languages_json', response.context)
+        self.assertIn('default_language', response.context)
+        self.assertIn('api_url', response.context)
