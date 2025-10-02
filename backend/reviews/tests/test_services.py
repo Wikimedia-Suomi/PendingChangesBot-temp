@@ -23,7 +23,7 @@ class FakeSite:
         self.users_data: dict[str, dict] = {}
         self.requests: list[dict] = []
 
-    def _simple_request(self, **kwargs):
+    def simple_request(self, **kwargs):
         self.requests.append(kwargs)
         return FakeRequest(self.response)
 
@@ -179,7 +179,7 @@ class RefreshWorkflowTests(TestCase):
         fake_site = FakeSite()
         fake_site.response = {"query": {"pages": []}}
         mock_site.return_value = fake_site
-        fake_site._simple_request = mock.Mock(side_effect=RuntimeError("boom"))
+        fake_site.simple_request = mock.Mock(side_effect=RuntimeError("boom"))
         client = WikiClient(wiki)
         with self.assertRaises(RuntimeError):
             client.refresh()
