@@ -98,37 +98,51 @@ def api_refresh(request: HttpRequest, pk: int) -> JsonResponse:
     return JsonResponse({"pages": [page.pageid for page in pages]})
 
 
+def _build_revision_payload(revisions, wiki):
+    usernames: set[str] = {
+        revision.user_name
+        for revision in revisions
+        if revision.user_name
+    }
+    profiles = {
+        profile.username: profile
+        for profile in EditorProfile.objects.filter(
+            wiki=wiki, username__in=usernames
+        )
+    }
+
+    payload: list[dict] = []
+    for revision in revisions:
+        profile = profiles.get(revision.user_name)
+        payload.append(
+            {
+                "revid": revision.revid,
+                "parentid": revision.parentid,
+                "timestamp": revision.timestamp.isoformat(),
+                "age_seconds": int(revision.age_at_fetch.total_seconds()),
+                "user_name": revision.user_name,
+                "change_tags": revision.change_tags,
+                "comment": revision.comment,
+                "categories": revision.categories,
+                "sha1": revision.sha1,
+                "editor_profile": {
+                    "usergroups": profile.usergroups if profile else [],
+                    "is_blocked": profile.is_blocked if profile else False,
+                    "is_bot": profile.is_bot if profile else False,
+                    "is_autopatrolled": profile.is_autopatrolled if profile else False,
+                    "is_autoreviewed": profile.is_autoreviewed if profile else False,
+                },
+            }
+        )
+    return payload
+
+
 @require_GET
 def api_pending(request: HttpRequest, pk: int) -> JsonResponse:
     wiki = _get_wiki(pk)
     pages_payload = []
     for page in PendingPage.objects.filter(wiki=wiki).prefetch_related("revisions"):
-        revisions_payload = []
-        for revision in page.revisions.all():
-            profile = EditorProfile.objects.filter(
-                wiki=wiki,
-                username=revision.user_name,
-            ).first()
-            revisions_payload.append(
-                {
-                    "revid": revision.revid,
-                    "parentid": revision.parentid,
-                    "timestamp": revision.timestamp.isoformat(),
-                    "age_seconds": int(revision.age_at_fetch.total_seconds()),
-                    "user_name": revision.user_name,
-                    "change_tags": revision.change_tags,
-                    "comment": revision.comment,
-                    "categories": revision.categories,
-                    "sha1": revision.sha1,
-                    "editor_profile": {
-                        "usergroups": profile.usergroups if profile else [],
-                        "is_blocked": profile.is_blocked if profile else False,
-                        "is_bot": profile.is_bot if profile else False,
-                        "is_autopatrolled": profile.is_autopatrolled if profile else False,
-                        "is_autoreviewed": profile.is_autoreviewed if profile else False,
-                    },
-                }
-            )
+        revisions_payload = _build_revision_payload(page.revisions.all(), wiki)
         pages_payload.append(
             {
                 "pageid": page.pageid,
@@ -139,6 +153,23 @@ def api_pending(request: HttpRequest, pk: int) -> JsonResponse:
             }
         )
     return JsonResponse({"pages": pages_payload})
+
+
+@require_GET
+def api_page_revisions(request: HttpRequest, pk: int, pageid: int) -> JsonResponse:
+    wiki = _get_wiki(pk)
+    page = get_object_or_404(
+        PendingPage.objects.prefetch_related("revisions"),
+        wiki=wiki,
+        pageid=pageid,
+    )
+    revisions_payload = _build_revision_payload(page.revisions.all(), wiki)
+    return JsonResponse(
+        {
+            "pageid": page.pageid,
+            "revisions": revisions_payload,
+        }
+    )
 
 
 @csrf_exempt
