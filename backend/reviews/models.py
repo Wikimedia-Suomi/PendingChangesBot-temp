@@ -74,6 +74,7 @@ class PendingRevision(models.Model):
     change_tags = models.JSONField(default=list, blank=True)
     wikitext = models.TextField()
     categories = models.JSONField(default=list, blank=True)
+    superset_data = models.JSONField(default=dict, blank=True)
 
     class Meta:
         unique_together = ("page", "revid")
