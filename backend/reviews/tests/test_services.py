@@ -53,6 +53,11 @@ class WikiClientTests(TestCase):
         )
         self.site_patcher.start()
         self.addCleanup(self.site_patcher.stop)
+        self.superset_patcher = mock.patch("reviews.services.SupersetQuery")
+        self.mock_superset_cls = self.superset_patcher.start()
+        self.addCleanup(self.superset_patcher.stop)
+        self.mock_superset = self.mock_superset_cls.return_value
+        self.mock_superset.query.return_value = []
 
     def test_parse_categories_extracts_unique_names(self):
         wikitext = (
@@ -63,18 +68,23 @@ class WikiClientTests(TestCase):
         self.assertEqual(categories, ["Example", "Second"])
 
     def test_fetch_pending_pages_caches_pages(self):
-        self.fake_site.response = {
-            "query": {
-                "oldreviewedpages": [
-                    {
-                        "pageid": 123,
-                        "title": "Example",
-                        "revid": 10,
-                        "pendingSince": "2024-01-01T00:00:00Z",
-                    }
-                ]
+        self.mock_superset.query.return_value = [
+            {
+                "fp_page_id": 123,
+                "page_title": "Example",
+                "fp_stable": 10,
+                "fp_pending_since": "2024-01-01T00:00:00Z",
+                "rev_id": 11,
+                "rev_timestamp": "2024-01-02 03:04:05",
+                "rev_parent_id": 9,
+                "comment_text": "Superset edit",
+                "rev_sha1": "abc123",
+                "change_tags": "mobile,pc",
+                "user_groups": "autopatrolled,bot",
+                "user_former_groups": "sysop",
+                "actor_name": "SupersetUser",
             }
-        }
+        ]
         client = WikiClient(self.wiki)
         pages = client.fetch_pending_pages(limit=10)
         self.assertEqual(len(pages), 1)
@@ -82,19 +92,14 @@ class WikiClientTests(TestCase):
         self.assertEqual(page.pageid, 123)
         self.assertEqual(page.stable_revid, 10)
         self.assertIsNotNone(page.pending_since)
-        self.assertEqual(
-            self.fake_site.requests,
-            [
-                {
-                    "action": "query",
-                    "format": "json",
-                    "list": "oldreviewedpages",
-                    "ornamespace": 0,
-                    "ornlimit": "10",
-                    "formatversion": 2,
-                }
-            ],
-        )
+        sql_argument = self.mock_superset.query.call_args[0][0]
+        self.assertIn("LIMIT 10) as fp", sql_argument)
+        revision = PendingRevision.objects.get()
+        self.assertEqual(revision.revid, 11)
+        self.assertEqual(revision.comment, "Superset edit")
+        self.assertEqual(revision.change_tags, ["mobile", "pc"])
+        self.assertEqual(revision.superset_data["user_groups"], ["autopatrolled", "bot"])
+        self.assertEqual(revision.superset_data["user_former_groups"], ["sysop"])
 
     def test_fetch_revisions_for_page_saves_revision_and_editor(self):
         client = WikiClient(self.wiki)
@@ -169,8 +174,9 @@ class WikiClientTests(TestCase):
 
 
 class RefreshWorkflowTests(TestCase):
+    @mock.patch("reviews.services.SupersetQuery")
     @mock.patch("reviews.services.pywikibot.Site")
-    def test_refresh_handles_errors(self, mock_site):
+    def test_refresh_handles_errors(self, mock_site, mock_superset):
         wiki = Wiki.objects.create(
             name="Test Wiki",
             code="test",
@@ -179,7 +185,7 @@ class RefreshWorkflowTests(TestCase):
         fake_site = FakeSite()
         fake_site.response = {"query": {"pages": []}}
         mock_site.return_value = fake_site
-        fake_site.simple_request = mock.Mock(side_effect=RuntimeError("boom"))
+        mock_superset.return_value.query.side_effect = RuntimeError("boom")
         client = WikiClient(wiki)
         with self.assertRaises(RuntimeError):
             client.refresh()
