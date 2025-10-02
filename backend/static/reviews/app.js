@@ -201,6 +201,31 @@ createApp({
       return formatDateTime(value);
     }
 
+    function formatTitle(title) {
+      if (!title) {
+        return "";
+      }
+      return title.replace(/_/g, " ");
+    }
+
+    function buildLatestRevisionUrl(page) {
+      if (!page || !page.title) {
+        return "";
+      }
+      const wiki = currentWiki.value;
+      if (!wiki || !wiki.api_endpoint) {
+        return "";
+      }
+      const normalizedTitle = page.title.replace(/ /g, "_");
+      const encodedTitle = encodeURIComponent(normalizedTitle);
+      try {
+        const apiUrl = new URL(wiki.api_endpoint);
+        return `${apiUrl.origin}/wiki/${encodedTitle}`;
+      } catch (error) {
+        return `/wiki/${encodedTitle}`;
+      }
+    }
+
     function toggleConfiguration() {
       state.configurationOpen = !state.configurationOpen;
     }
@@ -232,6 +257,8 @@ createApp({
       loadPending,
       formatDate,
       toggleConfiguration,
+      formatTitle,
+      buildLatestRevisionUrl,
     };
   },
 }).mount("#app");

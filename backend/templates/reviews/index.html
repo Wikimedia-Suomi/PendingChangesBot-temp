@@ -79,7 +79,16 @@
             <article v-for="page in state.pages" :key="page.pageid" class="card mb-5">
               <header class="card-header">
                 <p class="card-header-title is-size-5 is-flex is-align-items-center">
-                  <span>{{ page.title }}</span>
+                  <span>
+                    <a
+                      :href="buildLatestRevisionUrl(page)"
+                      class="has-text-link"
+                      target="_blank"
+                      rel="noreferrer noopener"
+                    >
+                      {{ formatTitle(page.title) }}
+                    </a>
+                  </span>
                   <span
                     class="is-size-6 has-text-grey ml-3"
                     v-if="page.pending_since"
