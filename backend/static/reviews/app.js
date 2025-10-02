@@ -121,7 +121,10 @@ createApp({
         const data = await apiRequest(`/api/wikis/${wikiId}/pending/`);
         const pagesWithRevisions = await Promise.all(
           (data.pages || []).map(async (page) => {
-            const revisions = await fetchRevisionsForPage(wikiId, page.pageid);
+            let revisions = Array.isArray(page.revisions) ? page.revisions : [];
+            if (!revisions.length) {
+              revisions = await fetchRevisionsForPage(wikiId, page.pageid);
+            }
             return {
               ...page,
               revisions,
