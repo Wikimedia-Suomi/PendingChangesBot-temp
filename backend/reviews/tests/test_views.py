@@ -25,7 +25,8 @@ class ViewTests(TestCase):
         response = self.client.get(reverse("index"))
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, "Pending Changes Review")
-        self.assertTrue(Wiki.objects.exists())
+        codes = list(Wiki.objects.values_list("code", flat=True))
+        self.assertCountEqual(codes, ["de", "en", "pl", "pt"])
 
     @mock.patch("reviews.views.WikiClient")
     def test_api_refresh_returns_error_on_failure(self, mock_client):

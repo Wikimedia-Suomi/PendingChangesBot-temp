@@ -20,13 +20,37 @@ def index(request: HttpRequest) -> HttpResponse:
 
     wikis = Wiki.objects.all().order_by("code")
     if not wikis.exists():
-        default_api = "https://fi.wikipedia.org/w/api.php"
-        wiki = Wiki.objects.create(
-            name="Finnish Wikipedia",
-            code="fi",
-            api_endpoint=default_api,
+        default_wikis = (
+            {
+                "name": "German Wikipedia",
+                "code": "de",
+                "api_endpoint": "https://de.wikipedia.org/w/api.php",
+            },
+            {
+                "name": "English Wikipedia",
+                "code": "en",
+                "api_endpoint": "https://en.wikipedia.org/w/api.php",
+            },
+            {
+                "name": "Polish Wikipedia",
+                "code": "pl",
+                "api_endpoint": "https://pl.wikipedia.org/w/api.php",
+            },
+            {
+                "name": "Portuguese Wikipedia",
+                "code": "pt",
+                "api_endpoint": "https://pt.wikipedia.org/w/api.php",
+            },
         )
-        WikiConfiguration.objects.get_or_create(wiki=wiki)
+        for defaults in default_wikis:
+            wiki, _ = Wiki.objects.get_or_create(
+                code=defaults["code"],
+                defaults={
+                    "name": defaults["name"],
+                    "api_endpoint": defaults["api_endpoint"],
+                },
+            )
+            WikiConfiguration.objects.get_or_create(wiki=wiki)
         wikis = Wiki.objects.all().order_by("code")
     payload = []
     for wiki in wikis:
