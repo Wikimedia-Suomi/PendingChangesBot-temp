@@ -9,7 +9,6 @@ from datetime import datetime
 
 import mwparserfromhell
 import pywikibot
-import requests
 from django.db import transaction
 from django.utils import timezone as dj_timezone
 
@@ -45,20 +44,15 @@ class WikiClient:
     def fetch_pending_pages(self, limit: int = 50) -> list[PendingPage]:
         """Fetch the oldest pending pages and cache them in the database."""
 
-        response = requests.get(
-            self.wiki.api_endpoint,
-            params={
-                "action": "query",
-                "format": "json",
-                "list": "oldreviewedpages",
-                "ornamespace": 0,
-                "ornlimit": limit,
-                "formatversion": 2,
-            },
-            timeout=60,
+        request = self.site._simple_request(
+            action="query",
+            format="json",
+            list="oldreviewedpages",
+            ornamespace=0,
+            ornlimit=str(limit),
+            formatversion=2,
         )
-        response.raise_for_status()
-        payload = response.json()
+        payload = request.submit()
         pages: list[PendingPage] = []
 
         with transaction.atomic():
