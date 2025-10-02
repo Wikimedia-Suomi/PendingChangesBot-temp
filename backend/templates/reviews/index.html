@@ -42,19 +42,34 @@
 
       <section class="section" v-if="currentWiki">
         <div class="box mb-5">
-          <h2 class="title is-4">Configuration</h2>
-          <div class="columns">
-            <div class="column">
-              <label class="label">Blocking categories</label>
-              <textarea class="textarea" rows="4" v-model="forms.blockingCategories" placeholder="One category per line"></textarea>
+          <div class="level is-mobile">
+            <div class="level-left">
+              <div class="level-item">
+                <h2 class="title is-4 mb-0">Configuration</h2>
+              </div>
             </div>
-            <div class="column">
-              <label class="label">Auto-approved user groups</label>
-              <textarea class="textarea" rows="4" v-model="forms.autoApprovedGroups" placeholder="One user group per line"></textarea>
+            <div class="level-right">
+              <div class="level-item">
+                <button class="button is-small is-text" @click="toggleConfiguration">
+                  {{ state.configurationOpen ? 'Hide' : 'Show' }}
+                </button>
+              </div>
             </div>
           </div>
-          <div class="buttons">
-            <button class="button is-primary" @click="saveConfiguration">Save configuration</button>
+          <div v-show="state.configurationOpen">
+            <div class="columns">
+              <div class="column">
+                <label class="label">Blocking categories</label>
+                <textarea class="textarea" rows="4" v-model="forms.blockingCategories" placeholder="One category per line"></textarea>
+              </div>
+              <div class="column">
+                <label class="label">Auto-approved user groups</label>
+                <textarea class="textarea" rows="4" v-model="forms.autoApprovedGroups" placeholder="One user group per line"></textarea>
+              </div>
+            </div>
+            <div class="buttons">
+              <button class="button is-primary" @click="saveConfiguration">Save configuration</button>
+            </div>
           </div>
         </div>
 
