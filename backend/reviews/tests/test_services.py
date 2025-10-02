@@ -62,10 +62,8 @@ class WikiClientTests(TestCase):
         categories = parse_categories(wikitext)
         self.assertEqual(categories, ["Example", "Second"])
 
-    @mock.patch("reviews.services.requests.get")
-    def test_fetch_pending_pages_caches_pages(self, mock_get):
-        mock_get.return_value.raise_for_status.return_value = None
-        mock_get.return_value.json.return_value = {
+    def test_fetch_pending_pages_caches_pages(self):
+        self.fake_site.response = {
             "query": {
                 "oldreviewedpages": [
                     {
@@ -84,12 +82,21 @@ class WikiClientTests(TestCase):
         self.assertEqual(page.pageid, 123)
         self.assertEqual(page.stable_revid, 10)
         self.assertIsNotNone(page.pending_since)
-        mock_get.assert_called_once()
+        self.assertEqual(
+            self.fake_site.requests,
+            [
+                {
+                    "action": "query",
+                    "format": "json",
+                    "list": "oldreviewedpages",
+                    "ornamespace": 0,
+                    "ornlimit": "10",
+                    "formatversion": 2,
+                }
+            ],
+        )
 
-    @mock.patch("reviews.services.requests.get")
-    def test_fetch_revisions_for_page_saves_revision_and_editor(self, mock_get):
-        mock_get.return_value.raise_for_status.return_value = None
-        mock_get.return_value.json.return_value = {"query": {"oldreviewedpages": []}}
+    def test_fetch_revisions_for_page_saves_revision_and_editor(self):
         client = WikiClient(self.wiki)
         page = PendingPage.objects.create(
             wiki=self.wiki,
@@ -134,10 +141,7 @@ class WikiClientTests(TestCase):
         profile = EditorProfile.objects.get(username="Example")
         self.assertTrue(profile.is_autopatrolled)
 
-    @mock.patch("reviews.services.requests.get")
-    def test_ensure_editor_profile_refreshes_after_expiry(self, mock_get):
-        mock_get.return_value.raise_for_status.return_value = None
-        mock_get.return_value.json.return_value = {"query": {"oldreviewedpages": []}}
+    def test_ensure_editor_profile_refreshes_after_expiry(self):
         client = WikiClient(self.wiki)
         profile = EditorProfile.objects.create(
             wiki=self.wiki,
@@ -165,9 +169,8 @@ class WikiClientTests(TestCase):
 
 
 class RefreshWorkflowTests(TestCase):
-    @mock.patch("reviews.services.requests.get")
     @mock.patch("reviews.services.pywikibot.Site")
-    def test_refresh_handles_errors(self, mock_site, mock_get):
+    def test_refresh_handles_errors(self, mock_site):
         wiki = Wiki.objects.create(
             name="Test Wiki",
             code="test",
@@ -176,7 +179,7 @@ class RefreshWorkflowTests(TestCase):
         fake_site = FakeSite()
         fake_site.response = {"query": {"pages": []}}
         mock_site.return_value = fake_site
-        mock_get.side_effect = RuntimeError("boom")
+        fake_site._simple_request = mock.Mock(side_effect=RuntimeError("boom"))
         client = WikiClient(wiki)
         with self.assertRaises(RuntimeError):
             client.refresh()
