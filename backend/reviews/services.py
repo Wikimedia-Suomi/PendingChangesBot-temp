@@ -21,7 +21,7 @@ os.environ.setdefault("PYWIKIBOT2_NO_USER_CONFIG", "1")
 os.environ.setdefault("PYWIKIBOT_NO_USER_CONFIG", "2")
 
 
-@dataclass(slots=True)
+@dataclass
 class RevisionPayload:
     revid: int
     parentid: int | None
