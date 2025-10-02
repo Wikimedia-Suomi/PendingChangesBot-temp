@@ -76,37 +76,48 @@
         <div class="box" v-if="state.pages.length">
           <div class="content">
             <h2 class="title is-4">Pending pages</h2>
-            <article v-for="page in state.pages" :key="page.pageid" class="mb-5">
-              <h3 class="title is-5">
-                {{ page.title }}
-                <small class="has-text-grey" v-if="page.pending_since">Pending since {{ formatDate(page.pending_since) }}</small>
-              </h3>
-              <table class="table is-fullwidth is-striped">
-                <thead>
-                  <tr>
-                    <th>Timestamp</th>
-                    <th>User</th>
-                    <th>Comment</th>
-                    <th>Tags</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  <tr v-for="revision in page.revisions" :key="revision.revid">
-                    <td>{{ formatDate(revision.timestamp) }}</td>
-                    <td>
-                      {{ revision.user_name || 'Unknown' }}
-                      <span class="tag is-danger is-light" v-if="revision.editor_profile.is_blocked">Blocked</span>
-                      <span class="tag is-info is-light" v-if="revision.editor_profile.is_bot">Bot</span>
-                      <span class="tag is-success is-light" v-if="revision.editor_profile.is_autopatrolled">Autopatrolled</span>
-                      <span class="tag is-success is-light" v-if="revision.editor_profile.is_autoreviewed">Autoreviewed</span>
-                    </td>
-                    <td>{{ revision.comment }}</td>
-                    <td>
-                      <span class="tag" v-for="tag in revision.change_tags" :key="tag">{{ tag }}</span>
-                    </td>
-                  </tr>
-                </tbody>
-              </table>
+            <article v-for="page in state.pages" :key="page.pageid" class="card mb-5">
+              <header class="card-header">
+                <p class="card-header-title is-size-5 is-flex is-align-items-center">
+                  <span>{{ page.title }}</span>
+                  <span
+                    class="is-size-6 has-text-grey ml-3"
+                    v-if="page.pending_since"
+                  >
+                    Pending since {{ formatDate(page.pending_since) }}
+                  </span>
+                </p>
+              </header>
+              <div class="card-content">
+                <div class="table-container">
+                  <table class="table is-fullwidth is-striped">
+                    <thead>
+                      <tr>
+                        <th>Timestamp</th>
+                        <th>User</th>
+                        <th>Comment</th>
+                        <th>Tags</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      <tr v-for="revision in page.revisions" :key="revision.revid">
+                        <td>{{ formatDate(revision.timestamp) }}</td>
+                        <td>
+                          {{ revision.user_name || 'Unknown' }}
+                          <span class="tag is-danger is-light" v-if="revision.editor_profile.is_blocked">Blocked</span>
+                          <span class="tag is-info is-light" v-if="revision.editor_profile.is_bot">Bot</span>
+                          <span class="tag is-success is-light" v-if="revision.editor_profile.is_autopatrolled">Autopatrolled</span>
+                          <span class="tag is-success is-light" v-if="revision.editor_profile.is_autoreviewed">Autoreviewed</span>
+                        </td>
+                        <td>{{ revision.comment }}</td>
+                        <td>
+                          <span class="tag" v-for="tag in revision.change_tags" :key="tag">{{ tag }}</span>
+                        </td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+              </div>
             </article>
           </div>
         </div>
