@@ -29,6 +29,7 @@ createApp({
       pages: [],
       loading: false,
       error: "",
+      configurationOpen: true,
     });
 
     const forms = reactive({
@@ -149,9 +150,14 @@ createApp({
       return formatDateTime(value);
     }
 
+    function toggleConfiguration() {
+      state.configurationOpen = !state.configurationOpen;
+    }
+
     watch(currentWiki, () => {
       syncForms();
       loadPending();
+      state.configurationOpen = true;
     }, { immediate: true });
 
     onMounted(() => {
@@ -167,6 +173,7 @@ createApp({
       saveConfiguration,
       loadPending,
       formatDate,
+      toggleConfiguration,
     };
   },
 }).mount("#app");
