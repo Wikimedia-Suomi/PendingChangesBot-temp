@@ -1,0 +1,178 @@
+from __future__ import annotations
+
+import json
+import logging
+from http import HTTPStatus
+
+from django.http import HttpRequest, HttpResponse, JsonResponse
+from django.shortcuts import get_object_or_404, render
+from django.views.decorators.csrf import csrf_exempt
+from django.views.decorators.http import require_GET, require_http_methods
+
+from .models import EditorProfile, PendingPage, Wiki, WikiConfiguration
+from .services import WikiClient
+
+logger = logging.getLogger(__name__)
+
+
+def index(request: HttpRequest) -> HttpResponse:
+    """Render the Vue.js application shell."""
+
+    wikis = Wiki.objects.all().order_by("code")
+    if not wikis.exists():
+        default_api = "https://fi.wikipedia.org/w/api.php"
+        wiki = Wiki.objects.create(
+            name="Finnish Wikipedia",
+            code="fi",
+            api_endpoint=default_api,
+        )
+        WikiConfiguration.objects.get_or_create(wiki=wiki)
+        wikis = Wiki.objects.all().order_by("code")
+    payload = []
+    for wiki in wikis:
+        configuration, _ = WikiConfiguration.objects.get_or_create(wiki=wiki)
+        payload.append(
+            {
+                "id": wiki.id,
+                "name": wiki.name,
+                "code": wiki.code,
+                "api_endpoint": wiki.api_endpoint,
+                "configuration": {
+                    "blocking_categories": configuration.blocking_categories,
+                    "auto_approved_groups": configuration.auto_approved_groups,
+                },
+            }
+        )
+    return render(
+        request,
+        "reviews/index.html",
+        {
+            "initial_wikis": payload,
+        },
+    )
+
+
+@require_GET
+def api_wikis(request: HttpRequest) -> JsonResponse:
+    payload = []
+    for wiki in Wiki.objects.all().order_by("code"):
+        configuration = getattr(wiki, "configuration", None)
+        payload.append(
+            {
+                "id": wiki.id,
+                "name": wiki.name,
+                "code": wiki.code,
+                "api_endpoint": wiki.api_endpoint,
+                "configuration": {
+                    "blocking_categories": (
+                        configuration.blocking_categories if configuration else []
+                    ),
+                    "auto_approved_groups": (
+                        configuration.auto_approved_groups if configuration else []
+                    ),
+                },
+            }
+        )
+    return JsonResponse({"wikis": payload})
+
+
+def _get_wiki(pk: int) -> Wiki:
+    wiki = get_object_or_404(Wiki, pk=pk)
+    WikiConfiguration.objects.get_or_create(wiki=wiki)
+    return wiki
+
+
+@csrf_exempt
+@require_http_methods(["POST"])
+def api_refresh(request: HttpRequest, pk: int) -> JsonResponse:
+    wiki = _get_wiki(pk)
+    client = WikiClient(wiki)
+    try:
+        pages = client.refresh()
+    except Exception as exc:  # pragma: no cover - network failures handled in UI
+        logger.exception("Failed to refresh pending changes for %s", wiki.code)
+        return JsonResponse(
+            {"error": str(exc)},
+            status=HTTPStatus.BAD_GATEWAY,
+        )
+    return JsonResponse({"pages": [page.pageid for page in pages]})
+
+
+@require_GET
+def api_pending(request: HttpRequest, pk: int) -> JsonResponse:
+    wiki = _get_wiki(pk)
+    pages_payload = []
+    for page in PendingPage.objects.filter(wiki=wiki).prefetch_related("revisions"):
+        revisions_payload = []
+        for revision in page.revisions.all():
+            profile = EditorProfile.objects.filter(
+                wiki=wiki,
+                username=revision.user_name,
+            ).first()
+            revisions_payload.append(
+                {
+                    "revid": revision.revid,
+                    "parentid": revision.parentid,
+                    "timestamp": revision.timestamp.isoformat(),
+                    "age_seconds": int(revision.age_at_fetch.total_seconds()),
+                    "user_name": revision.user_name,
+                    "change_tags": revision.change_tags,
+                    "comment": revision.comment,
+                    "categories": revision.categories,
+                    "sha1": revision.sha1,
+                    "editor_profile": {
+                        "usergroups": profile.usergroups if profile else [],
+                        "is_blocked": profile.is_blocked if profile else False,
+                        "is_bot": profile.is_bot if profile else False,
+                        "is_autopatrolled": profile.is_autopatrolled if profile else False,
+                        "is_autoreviewed": profile.is_autoreviewed if profile else False,
+                    },
+                }
+            )
+        pages_payload.append(
+            {
+                "pageid": page.pageid,
+                "title": page.title,
+                "pending_since": page.pending_since.isoformat() if page.pending_since else None,
+                "stable_revid": page.stable_revid,
+                "revisions": revisions_payload,
+            }
+        )
+    return JsonResponse({"pages": pages_payload})
+
+
+@csrf_exempt
+@require_http_methods(["POST"])
+def api_clear_cache(request: HttpRequest, pk: int) -> JsonResponse:
+    wiki = _get_wiki(pk)
+    deleted_pages, _ = PendingPage.objects.filter(wiki=wiki).delete()
+    return JsonResponse({"cleared": deleted_pages})
+
+
+@csrf_exempt
+@require_http_methods(["GET", "PUT"])
+def api_configuration(request: HttpRequest, pk: int) -> JsonResponse:
+    wiki = _get_wiki(pk)
+    configuration = wiki.configuration
+    if request.method == "PUT":
+        if request.content_type == "application/json":
+            payload = json.loads(request.body.decode("utf-8")) if request.body else {}
+        else:
+            payload = request.POST.dict()
+        blocking_categories = payload.get("blocking_categories", [])
+        auto_groups = payload.get("auto_approved_groups", [])
+        if isinstance(blocking_categories, str):
+            blocking_categories = [blocking_categories]
+        if isinstance(auto_groups, str):
+            auto_groups = [auto_groups]
+        configuration.blocking_categories = blocking_categories
+        configuration.auto_approved_groups = auto_groups
+        configuration.save(
+            update_fields=["blocking_categories", "auto_approved_groups", "updated_at"]
+        )
+    return JsonResponse(
+        {
+            "blocking_categories": configuration.blocking_categories,
+            "auto_approved_groups": configuration.auto_approved_groups,
+        }
+    )

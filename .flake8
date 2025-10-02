@@ -1,5 +1,4 @@
 [flake8]
 max-line-length = 100
-extend-ignore = E203, W503
-per-file-ignores =
-    backend/wiki_edits/settings.py:E501
+exclude = .git,__pycache__,build,dist,venv
+extend-ignore = E203,W503

@@ -1,6 +1,9 @@
 # PendingChangesBot
 
-PendingChangesBot is an application which tracks pending changes in Wikimedia Projects.
+PendingChangesBot is a Django application that inspects pending changes on Wikimedia
+projects using the Flagged Revisions API. It fetches the 50 oldest pending pages for a
+selected wiki, caches their pending revisions together with editor metadata, and exposes a
+Vue.js interface for reviewing the results.
 
 ## Installation
 
@@ -22,14 +25,15 @@ PendingChangesBot is an application which tracks pending changes in Wikimedia Pr
 
 ## Running the application
 
-The Django project now serves both the API and the single-page frontend from the same codebase.
+The Django project serves both the API and the Vue.js frontend from the same codebase.
 
 ```bash
 cd backend
 python manage.py runserver
 ```
 
-Open <http://127.0.0.1:8000/> in your browser to use the interface. The JSON API continues to be available at <http://127.0.0.1:8000/api/recent-edits/>.
+Open <http://127.0.0.1:8000/> in your browser to use the interface. JSON endpoints are
+available under `/api/wikis/<wiki_id>/…`, for example `/api/wikis/1/pending/`.
 
 ## Running unit tests
 
