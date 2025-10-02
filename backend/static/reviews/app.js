@@ -101,6 +101,15 @@ createApp({
       }
     }
 
+    async function fetchRevisionsForPage(wikiId, pageId) {
+      try {
+        const data = await apiRequest(`/api/wikis/${wikiId}/pages/${pageId}/revisions/`);
+        return data.revisions || [];
+      } catch (error) {
+        return [];
+      }
+    }
+
     async function loadPending() {
       if (!state.selectedWikiId) {
         state.pages = [];
@@ -108,8 +117,20 @@ createApp({
       }
       state.loading = true;
       try {
-        const data = await apiRequest(`/api/wikis/${state.selectedWikiId}/pending/`);
-        state.pages = data.pages;
+        const wikiId = state.selectedWikiId;
+        const data = await apiRequest(`/api/wikis/${wikiId}/pending/`);
+        const pagesWithRevisions = await Promise.all(
+          (data.pages || []).map(async (page) => {
+            const revisions = await fetchRevisionsForPage(wikiId, page.pageid);
+            return {
+              ...page,
+              revisions,
+            };
+          }),
+        );
+        if (wikiId === state.selectedWikiId) {
+          state.pages = pagesWithRevisions;
+        }
       } catch (error) {
         state.pages = [];
       } finally {

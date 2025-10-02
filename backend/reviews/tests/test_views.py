@@ -79,6 +79,48 @@ class ViewTests(TestCase):
         self.assertEqual(rev_payload["revid"], revision.revid)
         self.assertTrue(rev_payload["editor_profile"]["is_autopatrolled"])
 
+    def test_api_page_revisions_returns_revision_payload(self):
+        page = PendingPage.objects.create(
+            wiki=self.wiki,
+            pageid=42,
+            title="Example",
+            stable_revid=1,
+        )
+        revision = PendingRevision.objects.create(
+            page=page,
+            revid=5,
+            parentid=3,
+            user_name="Another",
+            user_id=20,
+            timestamp=datetime.now(timezone.utc) - timedelta(minutes=30),
+            fetched_at=datetime.now(timezone.utc),
+            age_at_fetch=timedelta(minutes=30),
+            sha1="sha",
+            comment="More",
+            change_tags=["foo"],
+            wikitext="",
+            categories=["Bar"],
+        )
+        EditorProfile.objects.create(
+            wiki=self.wiki,
+            username="Another",
+            usergroups=["editor"],
+            is_blocked=False,
+            is_bot=False,
+            is_autopatrolled=False,
+            is_autoreviewed=True,
+        )
+
+        url = reverse("api_page_revisions", args=[self.wiki.pk, page.pageid])
+        response = self.client.get(url)
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertEqual(data["pageid"], page.pageid)
+        self.assertEqual(len(data["revisions"]), 1)
+        payload = data["revisions"][0]
+        self.assertEqual(payload["revid"], revision.revid)
+        self.assertTrue(payload["editor_profile"]["is_autoreviewed"])
+
     def test_api_clear_cache_deletes_records(self):
         PendingPage.objects.create(
             wiki=self.wiki,
