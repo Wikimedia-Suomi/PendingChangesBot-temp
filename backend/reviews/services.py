@@ -44,7 +44,7 @@ class WikiClient:
     def fetch_pending_pages(self, limit: int = 50) -> list[PendingPage]:
         """Fetch the oldest pending pages and cache them in the database."""
 
-        request = self.site._simple_request(
+        request = self.site.simple_request(
             action="query",
             format="json",
             list="oldreviewedpages",
@@ -78,7 +78,7 @@ class WikiClient:
     def fetch_revisions_for_page(self, page: PendingPage) -> list[PendingRevision]:
         """Fetch pending revisions for a single page using Pywikibot."""
 
-        request = self.site._simple_request(
+        request = self.site.simple_request(
             action="query",
             pageids=str(page.pageid),
             prop="revisions",
