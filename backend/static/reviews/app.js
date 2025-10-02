@@ -23,13 +23,40 @@ createApp({
     const initialElement = document.getElementById("initial-wikis");
     const initialData = initialElement ? JSON.parse(initialElement.textContent) : [];
 
+    const configurationStorageKey = "configurationOpen";
+
+    function loadConfigurationOpen() {
+      if (typeof window === "undefined") {
+        return false;
+      }
+      try {
+        return window.localStorage.getItem(configurationStorageKey) === "true";
+      } catch (error) {
+        return false;
+      }
+    }
+
+    function persistConfigurationOpen(value) {
+      if (typeof window === "undefined") {
+        return;
+      }
+      try {
+        window.localStorage.setItem(
+          configurationStorageKey,
+          value ? "true" : "false",
+        );
+      } catch (error) {
+        // Ignore storage errors.
+      }
+    }
+
     const state = reactive({
       wikis: initialData,
       selectedWikiId: initialData.length ? initialData[0].id : "",
       pages: [],
       loading: false,
       error: "",
-      configurationOpen: true,
+      configurationOpen: loadConfigurationOpen(),
     });
 
     const forms = reactive({
@@ -154,10 +181,17 @@ createApp({
       state.configurationOpen = !state.configurationOpen;
     }
 
+    watch(
+      () => state.configurationOpen,
+      (newValue) => {
+        persistConfigurationOpen(newValue);
+      },
+      { immediate: true },
+    );
+
     watch(currentWiki, () => {
       syncForms();
       loadPending();
-      state.configurationOpen = true;
     }, { immediate: true });
 
     onMounted(() => {
