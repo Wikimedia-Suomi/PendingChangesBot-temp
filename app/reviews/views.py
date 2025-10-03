@@ -9,6 +9,7 @@ from django.shortcuts import get_object_or_404, render
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_GET, require_http_methods
 
+from .autoreview import run_autoreview_for_page
 from .models import EditorProfile, PendingPage, Wiki, WikiConfiguration
 from .services import WikiClient
 
@@ -217,6 +218,26 @@ def api_page_revisions(request: HttpRequest, pk: int, pageid: int) -> JsonRespon
         {
             "pageid": page.pageid,
             "revisions": revisions_payload,
+        }
+    )
+
+
+@csrf_exempt
+@require_http_methods(["POST"])
+def api_autoreview(request: HttpRequest, pk: int, pageid: int) -> JsonResponse:
+    wiki = _get_wiki(pk)
+    page = get_object_or_404(
+        PendingPage.objects.prefetch_related("revisions"),
+        wiki=wiki,
+        pageid=pageid,
+    )
+    results = run_autoreview_for_page(page)
+    return JsonResponse(
+        {
+            "pageid": page.pageid,
+            "title": page.title,
+            "mode": "dry-run",
+            "results": results,
         }
     )
 

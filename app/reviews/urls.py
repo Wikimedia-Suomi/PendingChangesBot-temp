@@ -12,6 +12,11 @@ urlpatterns = [
         views.api_page_revisions,
         name="api_page_revisions",
     ),
+    path(
+        "api/wikis/<int:pk>/pages/<int:pageid>/autoreview/",
+        views.api_autoreview,
+        name="api_autoreview",
+    ),
     path("api/wikis/<int:pk>/clear/", views.api_clear_cache, name="api_clear_cache"),
     path("api/wikis/<int:pk>/configuration/", views.api_configuration, name="api_configuration"),
 ]
