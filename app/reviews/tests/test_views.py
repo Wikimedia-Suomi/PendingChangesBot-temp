@@ -54,6 +54,7 @@ class ViewTests(TestCase):
             pageid=1,
             title="Page",
             stable_revid=1,
+            categories=["Cat"],
         )
         revision = PendingRevision.objects.create(
             page=page,
@@ -91,6 +92,7 @@ class ViewTests(TestCase):
             pageid=42,
             title="Example",
             stable_revid=1,
+            categories=["Bar"],
         )
         revision = PendingRevision.objects.create(
             page=page,
@@ -169,7 +171,7 @@ class ViewTests(TestCase):
             sha1="hash",
             comment="Automated edit",
             change_tags=[],
-            wikitext="",
+            wikitext="Some plain text",
             categories=[],
             superset_data={"user_groups": ["bot"], "rc_bot": True},
         )
@@ -209,7 +211,7 @@ class ViewTests(TestCase):
             sha1="hash2",
             comment="Admin edit",
             change_tags=[],
-            wikitext="",
+            wikitext="Some plain text",
             categories=[],
             superset_data={"user_groups": ["Sysop"]},
         )
@@ -242,7 +244,7 @@ class ViewTests(TestCase):
             sha1="hash5",
             comment="Edit",
             change_tags=[],
-            wikitext="",
+            wikitext="Some plain text",
             categories=[],
             superset_data={"user_groups": ["autopatrolled"]},
         )
@@ -262,7 +264,8 @@ class ViewTests(TestCase):
         self.assertEqual(result["tests"][1]["status"], "ok")
         self.assertIn("Autopatrolled", result["tests"][1]["message"])
 
-    def test_api_autoreview_blocks_on_blocking_categories(self):
+    @mock.patch("reviews.models.pywikibot.Site")
+    def test_api_autoreview_blocks_on_blocking_categories(self, mock_site):
         config = self.wiki.configuration
         config.blocking_categories = ["Secret"]
         config.save(update_fields=["blocking_categories"])
@@ -273,7 +276,7 @@ class ViewTests(TestCase):
             title="Blocked Page",
             stable_revid=1,
         )
-        PendingRevision.objects.create(
+        revision = PendingRevision.objects.create(
             page=page,
             revid=202,
             parentid=160,
@@ -286,9 +289,45 @@ class ViewTests(TestCase):
             comment="Edit",
             change_tags=[],
             wikitext="",
-            categories=["Secret"],
+            categories=[],
             superset_data={},
         )
+
+        wikitext_response = {
+            "query": {
+                "pages": [
+                    {
+                        "revisions": [
+                            {
+                                "slots": {
+                                    "main": {
+                                        "content": "Hidden [[Category:Secret]]",
+                                    }
+                                }
+                            }
+                        ]
+                    }
+                ]
+            }
+        }
+
+        class FakeRequest:
+            def __init__(self, data):
+                self._data = data
+
+            def submit(self):
+                return self._data
+
+        class FakeSite:
+            def __init__(self):
+                self.requests: list[dict] = []
+
+            def simple_request(self, **kwargs):
+                self.requests.append(kwargs)
+                return FakeRequest(wikitext_response)
+
+        fake_site = FakeSite()
+        mock_site.return_value = fake_site
 
         url = reverse("api_autoreview", args=[self.wiki.pk, page.pageid])
         response = self.client.post(url)
@@ -298,6 +337,15 @@ class ViewTests(TestCase):
         self.assertEqual(len(result["tests"]), 3)
         self.assertEqual(result["tests"][2]["status"], "fail")
         self.assertEqual(result["tests"][2]["id"], "blocking-categories")
+
+        revision.refresh_from_db()
+        self.assertEqual(revision.wikitext, "Hidden [[Category:Secret]]")
+        self.assertEqual(revision.categories, ["Secret"])
+        self.assertEqual(len(fake_site.requests), 1)
+
+        second_response = self.client.post(url)
+        self.assertEqual(second_response.status_code, 200)
+        self.assertEqual(len(fake_site.requests), 1)
 
     def test_api_autoreview_requires_manual_review_when_no_rules_apply(self):
         page = PendingPage.objects.create(
@@ -318,8 +366,8 @@ class ViewTests(TestCase):
             sha1="hash4",
             comment="Edit",
             change_tags=[],
-            wikitext="",
-            categories=["General"],
+            wikitext="Content [[Category:General]]",
+            categories=[],
             superset_data={"user_groups": ["user"]},
         )
 
@@ -352,7 +400,7 @@ class ViewTests(TestCase):
             sha1="sha-old",
             comment="Old",
             change_tags=[],
-            wikitext="",
+            wikitext="Older revision text",
             categories=[],
             superset_data={"user_groups": ["user"]},
         )
@@ -368,7 +416,7 @@ class ViewTests(TestCase):
             sha1="sha-new",
             comment="New",
             change_tags=[],
-            wikitext="",
+            wikitext="Newer revision text",
             categories=[],
             superset_data={"user_groups": ["user"]},
         )

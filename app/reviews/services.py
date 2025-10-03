@@ -31,7 +31,6 @@ class RevisionPayload:
     comment: str
     sha1: str
     tags: list[str]
-    categories: list[str]
     superset_data: dict | None = None
 
 
@@ -111,6 +110,8 @@ ORDER BY fp_pending_since, rev_id DESC
                     pageid_int = int(pageid)
                 except (TypeError, ValueError):
                     continue
+                page_categories = parse_superset_list(entry.get("page_categories"))
+
                 page = pages_by_id.get(pageid_int)
                 if page is None:
                     pending_since = parse_superset_timestamp(
@@ -122,9 +123,13 @@ ORDER BY fp_pending_since, rev_id DESC
                         title=entry.get("page_title", ""),
                         stable_revid=int(entry.get("fp_stable") or 0),
                         pending_since=pending_since,
+                        categories=page_categories,
                     )
                     pages_by_id[pageid_int] = page
                     pages.append(page)
+                elif page_categories != (page.categories or []):
+                    page.categories = page_categories
+                    page.save(update_fields=["categories"])
 
                 revid = entry.get("rev_id")
                 try:
@@ -147,7 +152,6 @@ ORDER BY fp_pending_since, rev_id DESC
                     comment=entry.get("comment_text", "") or "",
                     sha1=entry.get("rev_sha1", "") or "",
                     tags=parse_superset_list(entry.get("change_tags")),
-                    categories=parse_superset_list(entry.get("page_categories")),
                     superset_data=_prepare_superset_metadata(entry),
                 )
                 self._save_revision(page, payload_entry)
@@ -179,7 +183,6 @@ ORDER BY fp_pending_since, rev_id DESC
             "comment": payload.comment,
             "change_tags": payload.tags,
             "wikitext": "",
-            "categories": payload.categories,
         }
         if payload.superset_data is not None:
             defaults["superset_data"] = payload.superset_data
