@@ -88,7 +88,10 @@
         <div v-if="state.pages.length">
           <div class="content">
             <h2 class="title is-4">Pending pages</h2>
-            <article v-for="page in state.pages" :key="page.pageid" class="card mb-5">
+            <p class="help" v-if="hasMorePages">
+              Showing the first {{ pageDisplayLimit }} of {{ state.pages.length }} pending pages.
+            </p>
+            <article v-for="page in visiblePages" :key="page.pageid" class="card mb-5">
               <header class="card-header">
                 <p class="card-header-title is-size-5 is-flex is-align-items-center">
                   <span>

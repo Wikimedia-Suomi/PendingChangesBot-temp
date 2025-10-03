@@ -26,6 +26,7 @@ createApp({
     const configurationStorageKey = "configurationOpen";
     const selectedWikiStorageKey = "selectedWikiId";
     const sortOrderStorageKey = "pendingSortOrder";
+    const pageDisplayLimit = 10;
 
     function loadFromStorage(key) {
       if (typeof window === "undefined") {
@@ -153,6 +154,10 @@ createApp({
     const currentWiki = computed(() =>
       state.wikis.find((wiki) => wiki.id === state.selectedWikiId) || null,
     );
+
+    const visiblePages = computed(() => state.pages.slice(0, pageDisplayLimit));
+
+    const hasMorePages = computed(() => state.pages.length > pageDisplayLimit);
 
     function syncForms() {
       if (!currentWiki.value) {
@@ -354,6 +359,9 @@ createApp({
       state,
       forms,
       currentWiki,
+      visiblePages,
+      hasMorePages,
+      pageDisplayLimit,
       refresh,
       clearCache,
       saveConfiguration,
