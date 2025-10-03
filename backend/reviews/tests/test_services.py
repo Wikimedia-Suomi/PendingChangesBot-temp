@@ -3,6 +3,7 @@ from __future__ import annotations
 from datetime import datetime, timedelta, timezone
 from unittest import mock
 
+from django.db import IntegrityError
 from django.test import TestCase
 
 from reviews.models import EditorProfile, PendingPage, PendingRevision, Wiki
@@ -189,3 +190,67 @@ class RefreshWorkflowTests(TestCase):
         client = WikiClient(wiki)
         with self.assertRaises(RuntimeError):
             client.refresh()
+
+    @mock.patch("reviews.services.SupersetQuery")
+    @mock.patch("reviews.services.pywikibot.Site")
+    def test_refresh_skips_deleted_pages_without_integrity_error(
+        self, mock_site, mock_superset
+    ):
+        wiki = Wiki.objects.create(
+            name="Test Wiki",
+            code="test",
+            api_endpoint="https://test.example/api.php",
+        )
+        fake_site = FakeSite()
+        fake_site.response = {
+            "query": {
+                "pages": [
+                    {
+                        "revisions": [
+                            {
+                                "revid": 202,
+                                "parentid": 201,
+                                "timestamp": "2024-02-01T12:00:00Z",
+                                "user": "Example",
+                                "userid": 99,
+                                "comment": "Another edit",
+                                "sha1": "def456",
+                                "tags": [],
+                                "slots": {"main": {"content": "Text"}},
+                            }
+                        ]
+                    }
+                ]
+            }
+        }
+        mock_site.return_value = fake_site
+        mock_superset.return_value.query.return_value = [
+            {
+                "fp_page_id": 55,
+                "page_title": "Deleted page",
+                "fp_stable": 201,
+                "fp_pending_since": "2024-01-31T00:00:00Z",
+                "rev_id": 202,
+                "rev_timestamp": "2024-02-01 12:00:00",
+                "rev_parent_id": 201,
+                "comment_text": "Initial pending revision",
+                "rev_sha1": "def456",
+                "actor_name": "Example",
+            }
+        ]
+
+        client = WikiClient(wiki)
+        original_fetch = WikiClient.fetch_revisions_for_page
+
+        def deleting_fetch(self, page):
+            PendingPage.objects.filter(pk=page.pk).delete()
+            return original_fetch(self, page)
+
+        with mock.patch.object(WikiClient, "fetch_revisions_for_page", deleting_fetch):
+            try:
+                client.refresh()
+            except IntegrityError as exc:  # pragma: no cover - defensive assertion
+                self.fail(f"refresh raised IntegrityError: {exc}")
+
+        self.assertFalse(PendingPage.objects.exists())
+        self.assertFalse(PendingRevision.objects.filter(revid=202).exists())
