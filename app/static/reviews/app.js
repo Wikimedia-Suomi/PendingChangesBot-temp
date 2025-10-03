@@ -431,7 +431,7 @@ createApp({
         return "FAIL";
       }
       if (status === "not_ok") {
-        return "NOT OK";
+        return "Neutral";
       }
       return status || "";
     }
