@@ -7,7 +7,7 @@ from unittest import mock
 from django.test import Client, TestCase
 from django.urls import reverse
 
-from reviews.models import EditorProfile, PendingPage, PendingRevision, Wiki, WikiConfiguration
+from reviews.models import PendingPage, PendingRevision, Wiki, WikiConfiguration
 
 
 class ViewTests(TestCase):
@@ -60,18 +60,15 @@ class ViewTests(TestCase):
             age_at_fetch=timedelta(hours=2),
             sha1="hash",
             comment="Comment",
-            change_tags=["tag"],
+            change_tags=[],
             wikitext="",
-            categories=["Cat"],
-        )
-        EditorProfile.objects.create(
-            wiki=self.wiki,
-            username="User",
-            usergroups=["user"],
-            is_blocked=False,
-            is_bot=False,
-            is_autopatrolled=True,
-            is_autoreviewed=False,
+            categories=[],
+            superset_data={
+                "user_groups": ["user", "autopatrolled"],
+                "change_tags": ["tag"],
+                "page_categories": ["Cat"],
+                "rc_bot": False,
+            },
         )
         response = self.client.get(reverse("api_pending", args=[self.wiki.pk]))
         payload = response.json()
@@ -79,6 +76,8 @@ class ViewTests(TestCase):
         rev_payload = payload["pages"][0]["revisions"][0]
         self.assertEqual(rev_payload["revid"], revision.revid)
         self.assertTrue(rev_payload["editor_profile"]["is_autopatrolled"])
+        self.assertEqual(rev_payload["change_tags"], ["tag"])
+        self.assertEqual(rev_payload["categories"], ["Cat"])
 
     def test_api_page_revisions_returns_revision_payload(self):
         page = PendingPage.objects.create(
@@ -98,18 +97,15 @@ class ViewTests(TestCase):
             age_at_fetch=timedelta(minutes=30),
             sha1="sha",
             comment="More",
-            change_tags=["foo"],
+            change_tags=[],
             wikitext="",
-            categories=["Bar"],
-        )
-        EditorProfile.objects.create(
-            wiki=self.wiki,
-            username="Another",
-            usergroups=["editor"],
-            is_blocked=False,
-            is_bot=False,
-            is_autopatrolled=False,
-            is_autoreviewed=True,
+            categories=[],
+            superset_data={
+                "user_groups": ["editor", "autoreviewer"],
+                "change_tags": ["foo"],
+                "page_categories": ["Bar"],
+                "rc_bot": False,
+            },
         )
 
         url = reverse("api_page_revisions", args=[self.wiki.pk, page.pageid])
@@ -121,6 +117,8 @@ class ViewTests(TestCase):
         payload = data["revisions"][0]
         self.assertEqual(payload["revid"], revision.revid)
         self.assertTrue(payload["editor_profile"]["is_autoreviewed"])
+        self.assertEqual(payload["change_tags"], ["foo"])
+        self.assertEqual(payload["categories"], ["Bar"])
 
     def test_api_clear_cache_deletes_records(self):
         PendingPage.objects.create(

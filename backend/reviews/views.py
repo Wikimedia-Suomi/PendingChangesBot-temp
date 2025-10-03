@@ -138,6 +138,11 @@ def _build_revision_payload(revisions, wiki):
     payload: list[dict] = []
     for revision in revisions:
         profile = profiles.get(revision.user_name)
+        superset_data = revision.superset_data or {}
+        user_groups = profile.usergroups if profile else superset_data.get("user_groups", [])
+        if not user_groups:
+            user_groups = []
+        group_set = set(user_groups)
         payload.append(
             {
                 "revid": revision.revid,
@@ -145,16 +150,36 @@ def _build_revision_payload(revisions, wiki):
                 "timestamp": revision.timestamp.isoformat(),
                 "age_seconds": int(revision.age_at_fetch.total_seconds()),
                 "user_name": revision.user_name,
-                "change_tags": revision.change_tags,
+                "change_tags": revision.change_tags
+                if revision.change_tags
+                else superset_data.get("change_tags", []),
                 "comment": revision.comment,
-                "categories": revision.categories,
+                "categories": revision.categories
+                if revision.categories
+                else superset_data.get("page_categories", []),
                 "sha1": revision.sha1,
                 "editor_profile": {
-                    "usergroups": profile.usergroups if profile else [],
-                    "is_blocked": profile.is_blocked if profile else False,
-                    "is_bot": profile.is_bot if profile else False,
-                    "is_autopatrolled": profile.is_autopatrolled if profile else False,
-                    "is_autoreviewed": profile.is_autoreviewed if profile else False,
+                    "usergroups": user_groups,
+                    "is_blocked": (
+                        profile.is_blocked
+                        if profile
+                        else bool(superset_data.get("user_blocked", False))
+                    ),
+                    "is_bot": (
+                        profile.is_bot
+                        if profile
+                        else ("bot" in group_set or bool(superset_data.get("rc_bot")))
+                    ),
+                    "is_autopatrolled": (
+                        profile.is_autopatrolled
+                        if profile
+                        else ("autopatrolled" in group_set)
+                    ),
+                    "is_autoreviewed": (
+                        profile.is_autoreviewed
+                        if profile
+                        else bool(group_set & {"autoreview", "autoreviewer"})
+                    ),
                 },
             }
         )

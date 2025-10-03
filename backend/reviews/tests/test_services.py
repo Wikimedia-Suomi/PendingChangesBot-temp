@@ -1,9 +1,7 @@
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
 from unittest import mock
 
-from django.db import IntegrityError
 from django.test import TestCase
 
 from reviews.models import EditorProfile, PendingPage, PendingRevision, Wiki
@@ -84,6 +82,10 @@ class WikiClientTests(TestCase):
                 "user_groups": "autopatrolled,bot",
                 "user_former_groups": "sysop",
                 "actor_name": "SupersetUser",
+                "actor_user": 321,
+                "page_categories": "Foo,Bar",
+                "rc_bot": 1,
+                "rc_patrolled": 0,
             }
         ]
         client = WikiClient(self.wiki)
@@ -99,79 +101,39 @@ class WikiClientTests(TestCase):
         self.assertEqual(revision.revid, 11)
         self.assertEqual(revision.comment, "Superset edit")
         self.assertEqual(revision.change_tags, ["mobile", "pc"])
-        self.assertEqual(revision.superset_data["user_groups"], ["autopatrolled", "bot"])
-        self.assertEqual(revision.superset_data["user_former_groups"], ["sysop"])
+        self.assertCountEqual(revision.categories, ["Foo", "Bar"])
+        self.assertEqual(revision.user_id, 321)
+        self.assertTrue(revision.superset_data["rc_bot"])
+        self.assertEqual(revision.superset_data["page_categories"], ["Foo", "Bar"])
 
-    def test_fetch_revisions_for_page_saves_revision_and_editor(self):
-        client = WikiClient(self.wiki)
-        page = PendingPage.objects.create(
-            wiki=self.wiki,
-            pageid=1,
-            title="Page",
-            stable_revid=100,
-        )
-        self.fake_site.response = {
-            "query": {
-                "pages": [
-                    {
-                        "revisions": [
-                            {
-                                "revid": 101,
-                                "parentid": 100,
-                                "timestamp": "2024-01-01T12:00:00Z",
-                                "user": "Example",
-                                "userid": 55,
-                                "comment": "Edit",
-                                "sha1": "abc123",
-                                "tags": ["tag1"],
-                                "slots": {
-                                    "main": {
-                                        "content": "Text [[Category:Foo]]",
-                                    }
-                                },
-                            }
-                        ]
-                    }
-                ]
+    def test_fetch_pending_pages_hydrates_editor_profile(self):
+        self.mock_superset.query.return_value = [
+            {
+                "fp_page_id": 222,
+                "page_title": "Profile",
+                "fp_stable": 20,
+                "fp_pending_since": "2024-01-01T00:00:00Z",
+                "rev_id": 25,
+                "rev_timestamp": "2024-01-02 03:04:05",
+                "rev_parent_id": 19,
+                "comment_text": "Profile edit",
+                "rev_sha1": "def456",
+                "change_tags": "pc",
+                "user_groups": "bot,autoreview",
+                "actor_name": "ProfileUser",
+                "actor_user": 77,
+                "page_categories": None,
+                "rc_bot": "1",
+                "rc_patrolled": None,
             }
-        }
-        self.fake_site.users_data["Example"] = {
-            "name": "Example",
-            "groups": ["user", "autopatrolled"],
-        }
-        revisions = client.fetch_revisions_for_page(page)
-        self.assertEqual(len(revisions), 1)
-        revision = PendingRevision.objects.get()
-        self.assertEqual(revision.revid, 101)
-        self.assertEqual(revision.categories, ["Foo"])
-        profile = EditorProfile.objects.get(username="Example")
-        self.assertTrue(profile.is_autopatrolled)
-
-    def test_ensure_editor_profile_refreshes_after_expiry(self):
+        ]
         client = WikiClient(self.wiki)
-        profile = EditorProfile.objects.create(
-            wiki=self.wiki,
-            username="OldUser",
-            usergroups=["user"],
-            is_blocked=False,
-            is_bot=False,
-            is_autopatrolled=False,
-            is_autoreviewed=False,
-        )
-        EditorProfile.objects.filter(pk=profile.pk).update(
-            fetched_at=datetime.now(timezone.utc) - timedelta(minutes=200)
-        )
-        profile.refresh_from_db()
-        self.fake_site.users_data["OldUser"] = {
-            "name": "OldUser",
-            "groups": ["user", "bot"],
-            "blocked": True,
-        }
-        refreshed = client.ensure_editor_profile("OldUser")
-        refreshed.refresh_from_db()
-        self.assertTrue(refreshed.is_blocked)
-        self.assertTrue(refreshed.is_bot)
-        self.assertFalse(refreshed.is_autopatrolled)
+        client.fetch_pending_pages(limit=5)
+        profile = EditorProfile.objects.get(username="ProfileUser")
+        self.assertEqual(profile.usergroups, ["autoreview", "bot"])
+        self.assertTrue(profile.is_bot)
+        self.assertTrue(profile.is_autoreviewed)
+        self.assertFalse(profile.is_autopatrolled)
 
 
 class RefreshWorkflowTests(TestCase):
@@ -193,7 +155,7 @@ class RefreshWorkflowTests(TestCase):
 
     @mock.patch("reviews.services.SupersetQuery")
     @mock.patch("reviews.services.pywikibot.Site")
-    def test_refresh_skips_deleted_pages_without_integrity_error(
+    def test_refresh_does_not_call_pywikibot_requests(
         self, mock_site, mock_superset
     ):
         wiki = Wiki.objects.create(
@@ -202,55 +164,26 @@ class RefreshWorkflowTests(TestCase):
             api_endpoint="https://test.example/api.php",
         )
         fake_site = FakeSite()
-        fake_site.response = {
-            "query": {
-                "pages": [
-                    {
-                        "revisions": [
-                            {
-                                "revid": 202,
-                                "parentid": 201,
-                                "timestamp": "2024-02-01T12:00:00Z",
-                                "user": "Example",
-                                "userid": 99,
-                                "comment": "Another edit",
-                                "sha1": "def456",
-                                "tags": [],
-                                "slots": {"main": {"content": "Text"}},
-                            }
-                        ]
-                    }
-                ]
-            }
-        }
         mock_site.return_value = fake_site
         mock_superset.return_value.query.return_value = [
             {
-                "fp_page_id": 55,
-                "page_title": "Deleted page",
-                "fp_stable": 201,
-                "fp_pending_since": "2024-01-31T00:00:00Z",
-                "rev_id": 202,
-                "rev_timestamp": "2024-02-01 12:00:00",
-                "rev_parent_id": 201,
-                "comment_text": "Initial pending revision",
-                "rev_sha1": "def456",
-                "actor_name": "Example",
+                "fp_page_id": 1,
+                "page_title": "Page",
+                "fp_stable": 1,
+                "fp_pending_since": "2024-01-01T00:00:00Z",
+                "rev_id": 2,
+                "rev_timestamp": "2024-01-01 01:00:00",
+                "rev_parent_id": 1,
+                "comment_text": "Edit",
+                "rev_sha1": "hash",
+                "change_tags": "tag",
+                "user_groups": "user",
+                "actor_name": "User",
+                "actor_user": 5,
             }
         ]
 
         client = WikiClient(wiki)
-        original_fetch = WikiClient.fetch_revisions_for_page
-
-        def deleting_fetch(self, page):
-            PendingPage.objects.filter(pk=page.pk).delete()
-            return original_fetch(self, page)
-
-        with mock.patch.object(WikiClient, "fetch_revisions_for_page", deleting_fetch):
-            try:
-                client.refresh()
-            except IntegrityError as exc:  # pragma: no cover - defensive assertion
-                self.fail(f"refresh raised IntegrityError: {exc}")
-
-        self.assertFalse(PendingPage.objects.exists())
-        self.assertFalse(PendingRevision.objects.filter(revid=202).exists())
+        client.refresh()
+        self.assertEqual(fake_site.requests, [])
+        self.assertEqual(PendingRevision.objects.count(), 1)
