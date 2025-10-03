@@ -144,6 +144,22 @@ def _build_revision_payload(revisions, wiki):
         if not user_groups:
             user_groups = []
         group_set = set(user_groups)
+        revision_categories = list(revision.categories or [])
+        if revision_categories:
+            categories = revision_categories
+        else:
+            page_categories = revision.page.categories or []
+            if isinstance(page_categories, list) and page_categories:
+                categories = [str(category) for category in page_categories if category]
+            else:
+                superset_categories = superset_data.get("page_categories") or []
+                if isinstance(superset_categories, list):
+                    categories = [
+                        str(category) for category in superset_categories if category
+                    ]
+                else:
+                    categories = []
+
         payload.append(
             {
                 "revid": revision.revid,
@@ -155,9 +171,7 @@ def _build_revision_payload(revisions, wiki):
                 if revision.change_tags
                 else superset_data.get("change_tags", []),
                 "comment": revision.comment,
-                "categories": revision.categories
-                if revision.categories
-                else superset_data.get("page_categories", []),
+                "categories": categories,
                 "sha1": revision.sha1,
                 "editor_profile": {
                     "usergroups": user_groups,

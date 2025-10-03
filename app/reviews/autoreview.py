@@ -263,11 +263,10 @@ def _blocking_category_hits(
     if not blocking_lookup:
         return set()
 
-    categories = list(revision.categories or [])
-    superset = revision.superset_data or {}
-    superset_categories = superset.get("page_categories") or []
-    if isinstance(superset_categories, list):
-        categories.extend(str(category) for category in superset_categories if category)
+    categories = list(revision.get_categories())
+    page_categories = revision.page.categories or []
+    if isinstance(page_categories, list):
+        categories.extend(str(category) for category in page_categories if category)
 
     matched: set[str] = set()
     for category in categories:
@@ -275,4 +274,3 @@ def _blocking_category_hits(
         if normalized in blocking_lookup:
             matched.add(blocking_lookup[normalized])
     return matched
-
