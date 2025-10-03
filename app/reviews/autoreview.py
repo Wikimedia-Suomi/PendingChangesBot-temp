@@ -74,7 +74,7 @@ def _evaluate_revision(
             {
                 "id": "bot-user",
                 "title": "Bot user",
-                "status": "passed",
+                "status": "ok",
                 "message": "The edit could be auto-approved because the user is a bot.",
             }
         )
@@ -91,7 +91,7 @@ def _evaluate_revision(
         {
             "id": "bot-user",
             "title": "Bot user",
-            "status": "failed",
+            "status": "not_ok",
             "message": "The user is not marked as a bot.",
         }
     )
@@ -106,7 +106,7 @@ def _evaluate_revision(
                 {
                     "id": "auto-approved-group",
                     "title": "Auto-approved groups",
-                    "status": "passed",
+                    "status": "ok",
                     "message": "The user belongs to groups: {}.".format(
                         ", ".join(sorted(matched_groups))
                     ),
@@ -125,7 +125,7 @@ def _evaluate_revision(
             {
                 "id": "auto-approved-group",
                 "title": "Auto-approved groups",
-                "status": "failed",
+                "status": "not_ok",
                 "message": "The user does not belong to auto-approved groups.",
             }
         )
@@ -141,7 +141,7 @@ def _evaluate_revision(
                 {
                     "id": "auto-approved-group",
                     "title": "Auto-approved groups",
-                    "status": "passed",
+                    "status": "ok",
                     "message": "The user has default auto-approval rights: {}.".format(
                         ", ".join(default_rights)
                     ),
@@ -160,7 +160,7 @@ def _evaluate_revision(
             {
                 "id": "auto-approved-group",
                 "title": "Auto-approved groups",
-                "status": "failed",
+                "status": "not_ok",
                 "message": "The user does not have default auto-approval rights.",
             }
         )
@@ -172,7 +172,7 @@ def _evaluate_revision(
             {
                 "id": "blocking-categories",
                 "title": "Blocking categories",
-                "status": "failed",
+                "status": "fail",
                 "message": "The previous version belongs to blocking categories: {}.".format(
                     ", ".join(sorted(blocking_hits))
                 ),
@@ -191,7 +191,7 @@ def _evaluate_revision(
         {
             "id": "blocking-categories",
             "title": "Blocking categories",
-            "status": "passed",
+            "status": "not_ok",
             "message": "The previous version is not in blocking categories.",
         }
     )

@@ -183,7 +183,7 @@ class ViewTests(TestCase):
         result = data["results"][0]
         self.assertEqual(result["decision"]["status"], "approve")
         self.assertEqual(len(result["tests"]), 1)
-        self.assertEqual(result["tests"][0]["status"], "passed")
+        self.assertEqual(result["tests"][0]["status"], "ok")
         self.assertEqual(result["tests"][0]["id"], "bot-user")
 
     def test_api_autoreview_allows_configured_user_groups(self):
@@ -220,7 +220,7 @@ class ViewTests(TestCase):
         result = response.json()["results"][0]
         self.assertEqual(result["decision"]["status"], "approve")
         self.assertEqual(len(result["tests"]), 2)
-        self.assertEqual(result["tests"][1]["status"], "passed")
+        self.assertEqual(result["tests"][1]["status"], "ok")
         self.assertEqual(result["tests"][1]["id"], "auto-approved-group")
 
     def test_api_autoreview_defaults_to_profile_rights(self):
@@ -259,7 +259,7 @@ class ViewTests(TestCase):
         result = response.json()["results"][0]
         self.assertEqual(result["decision"]["status"], "approve")
         self.assertEqual(len(result["tests"]), 2)
-        self.assertEqual(result["tests"][1]["status"], "passed")
+        self.assertEqual(result["tests"][1]["status"], "ok")
         self.assertIn("Autopatrolled", result["tests"][1]["message"])
 
     def test_api_autoreview_blocks_on_blocking_categories(self):
@@ -296,7 +296,7 @@ class ViewTests(TestCase):
         result = response.json()["results"][0]
         self.assertEqual(result["decision"]["status"], "blocked")
         self.assertEqual(len(result["tests"]), 3)
-        self.assertEqual(result["tests"][2]["status"], "failed")
+        self.assertEqual(result["tests"][2]["status"], "fail")
         self.assertEqual(result["tests"][2]["id"], "blocking-categories")
 
     def test_api_autoreview_requires_manual_review_when_no_rules_apply(self):
@@ -329,7 +329,7 @@ class ViewTests(TestCase):
         result = response.json()["results"][0]
         self.assertEqual(result["decision"]["status"], "manual")
         self.assertEqual(len(result["tests"]), 3)
-        self.assertEqual(result["tests"][2]["status"], "passed")
+        self.assertEqual(result["tests"][2]["status"], "not_ok")
 
     def test_api_autoreview_orders_revisions_from_oldest_to_newest(self):
         page = PendingPage.objects.create(
