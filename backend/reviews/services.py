@@ -43,7 +43,7 @@ class WikiClient:
         self.wiki = wiki
         self.site = pywikibot.Site(code=wiki.code, fam=wiki.family)
 
-    def fetch_pending_pages(self, limit: int = 50) -> list[PendingPage]:
+    def fetch_pending_pages(self, limit: int = 10000) -> list[PendingPage]:
         """Fetch the pending pages using Superset and cache them in the database."""
 
         limit = int(limit)
