@@ -28,7 +28,7 @@ Vue.js interface for reviewing the results.
 The Django project serves both the API and the Vue.js frontend from the same codebase.
 
 ```bash
-cd backend
+cd app
 python manage.py runserver
 ```
 
@@ -37,10 +37,10 @@ available under `/api/wikis/<wiki_id>/…`, for example `/api/wikis/1/pending/`.
 
 ## Running unit tests
 
-Unit tests live in the Django backend project. Run them from the `backend/` directory so Django can locate the correct settings module.
+Unit tests live in the Django backend project. Run them from the `app/` directory so Django can locate the correct settings module.
 
 ```bash
-cd backend
+cd app
 python manage.py test
 ```
 
