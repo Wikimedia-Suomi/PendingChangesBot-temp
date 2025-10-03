@@ -424,30 +424,27 @@ createApp({
     }
 
     function formatTestStatus(status) {
-      if (status === "passed") {
-        return "Hyväksytty";
+      if (status === "ok") {
+        return "OK";
       }
-      if (status === "failed") {
-        return "Hylätty";
+      if (status === "fail") {
+        return "FAIL";
       }
-      if (status === "blocked") {
-        return "Estetty";
-      }
-      if (status === "skipped") {
-        return "Ohitettu";
+      if (status === "not_ok") {
+        return "NOT OK";
       }
       return status || "";
     }
 
     function statusTagClass(status) {
-      if (status === "passed") {
+      if (status === "ok") {
         return "is-success";
       }
-      if (status === "failed" || status === "blocked") {
+      if (status === "fail") {
         return "is-danger";
       }
-      if (status === "skipped") {
-        return "is-light";
+      if (status === "not_ok") {
+        return "is-warning";
       }
       return "is-light";
     }
