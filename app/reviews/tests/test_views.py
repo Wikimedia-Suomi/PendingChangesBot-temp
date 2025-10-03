@@ -7,7 +7,13 @@ from unittest import mock
 from django.test import Client, TestCase
 from django.urls import reverse
 
-from reviews.models import PendingPage, PendingRevision, Wiki, WikiConfiguration
+from reviews.models import (
+    EditorProfile,
+    PendingPage,
+    PendingRevision,
+    Wiki,
+    WikiConfiguration,
+)
 
 
 class ViewTests(TestCase):
@@ -216,6 +222,45 @@ class ViewTests(TestCase):
         self.assertEqual(len(result["tests"]), 2)
         self.assertEqual(result["tests"][1]["status"], "passed")
         self.assertEqual(result["tests"][1]["id"], "auto-approved-group")
+
+    def test_api_autoreview_defaults_to_profile_rights(self):
+        page = PendingPage.objects.create(
+            wiki=self.wiki,
+            pageid=105,
+            title="Default Rights", 
+            stable_revid=1,
+        )
+        PendingRevision.objects.create(
+            page=page,
+            revid=401,
+            parentid=300,
+            user_name="AutoUser",
+            user_id=3001,
+            timestamp=datetime.now(timezone.utc) - timedelta(hours=4),
+            fetched_at=datetime.now(timezone.utc),
+            age_at_fetch=timedelta(hours=4),
+            sha1="hash5",
+            comment="Edit",
+            change_tags=[],
+            wikitext="",
+            categories=[],
+            superset_data={"user_groups": ["autopatrolled"]},
+        )
+        EditorProfile.objects.create(
+            wiki=self.wiki,
+            username="AutoUser",
+            usergroups=["autopatrolled"],
+            is_autopatrolled=True,
+        )
+
+        url = reverse("api_autoreview", args=[self.wiki.pk, page.pageid])
+        response = self.client.post(url)
+        self.assertEqual(response.status_code, 200)
+        result = response.json()["results"][0]
+        self.assertEqual(result["decision"]["status"], "approve")
+        self.assertEqual(len(result["tests"]), 2)
+        self.assertEqual(result["tests"][1]["status"], "passed")
+        self.assertIn("Autopatrolled", result["tests"][1]["message"])
 
     def test_api_autoreview_blocks_on_blocking_categories(self):
         config = self.wiki.configuration
