@@ -192,10 +192,25 @@ ORDER BY fp_pending_since, rev_id DESC
                 tags=revision.get("tags", []),
                 categories=categories,
             )
-            revisions.append(self._save_revision(page, payload))
+            saved_revision = self._save_revision(page, payload)
+            if saved_revision is not None:
+                revisions.append(saved_revision)
         return revisions
 
-    def _save_revision(self, page: PendingPage, payload: RevisionPayload) -> PendingRevision:
+    def _save_revision(
+        self, page: PendingPage, payload: RevisionPayload
+    ) -> PendingRevision | None:
+        existing_page = (
+            PendingPage.objects.filter(pk=page.pk).only("id").first()
+            if page.pk
+            else None
+        )
+        if existing_page is None:
+            logger.warning(
+                "Pending page %s was deleted before saving revision %s", page.pk, payload.revid
+            )
+            return None
+
         age = dj_timezone.now() - payload.timestamp
         defaults = {
             "parentid": payload.parentid,
@@ -213,7 +228,7 @@ ORDER BY fp_pending_since, rev_id DESC
             defaults["superset_data"] = payload.superset_data
 
         revision, _ = PendingRevision.objects.update_or_create(
-            page=page,
+            page=existing_page,
             revid=payload.revid,
             defaults=defaults,
         )
