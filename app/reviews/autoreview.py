@@ -97,37 +97,73 @@ def _evaluate_revision(
     )
 
     # Test 2: Editors in the allow-list can be auto-approved.
-    matched_groups = _matched_user_groups(
-        revision, profile, allowed_groups=auto_groups
-    )
-    if matched_groups:
+    if auto_groups:
+        matched_groups = _matched_user_groups(
+            revision, profile, allowed_groups=auto_groups
+        )
+        if matched_groups:
+            tests.append(
+                {
+                    "id": "auto-approved-group",
+                    "title": "Auto-approved groups",
+                    "status": "passed",
+                    "message": "The user belongs to groups: {}.".format(
+                        ", ".join(sorted(matched_groups))
+                    ),
+                }
+            )
+            return {
+                "tests": tests,
+                "decision": AutoreviewDecision(
+                    status="approve",
+                    label="Would be auto-approved",
+                    reason="The user belongs to groups that are auto-approved.",
+                ),
+            }
+
         tests.append(
             {
                 "id": "auto-approved-group",
                 "title": "Auto-approved groups",
-                "status": "passed",
-                "message": "The user belongs to groups: {}.".format(
-                    ", ".join(sorted(matched_groups))
-                ),
+                "status": "failed",
+                "message": "The user does not belong to auto-approved groups.",
             }
         )
-        return {
-            "tests": tests,
-            "decision": AutoreviewDecision(
-                status="approve",
-                label="Would be auto-approved",
-                reason="The user belongs to groups that are auto-approved.",
-            ),
-        }
+    else:
+        if profile and (profile.is_autopatrolled or profile.is_autoreviewed):
+            default_rights: list[str] = []
+            if profile.is_autopatrolled:
+                default_rights.append("Autopatrolled")
+            if profile.is_autoreviewed:
+                default_rights.append("Autoreviewed")
 
-    tests.append(
-        {
-            "id": "auto-approved-group",
-            "title": "Auto-approved groups",
-            "status": "failed",
-            "message": "The user does not belong to auto-approved groups.",
-        }
-    )
+            tests.append(
+                {
+                    "id": "auto-approved-group",
+                    "title": "Auto-approved groups",
+                    "status": "passed",
+                    "message": "The user has default auto-approval rights: {}.".format(
+                        ", ".join(default_rights)
+                    ),
+                }
+            )
+            return {
+                "tests": tests,
+                "decision": AutoreviewDecision(
+                    status="approve",
+                    label="Would be auto-approved",
+                    reason="The user has default rights that allow auto-approval.",
+                ),
+            }
+
+        tests.append(
+            {
+                "id": "auto-approved-group",
+                "title": "Auto-approved groups",
+                "status": "failed",
+                "message": "The user does not have default auto-approval rights.",
+            }
+        )
 
     # Test 3: Blocking categories on the old version prevent automatic approval.
     blocking_hits = _blocking_category_hits(revision, blocking_categories)
