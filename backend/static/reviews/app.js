@@ -26,7 +26,7 @@ createApp({
     const configurationStorageKey = "configurationOpen";
     const selectedWikiStorageKey = "selectedWikiId";
     const sortOrderStorageKey = "pendingSortOrder";
-    const pageDisplayLimit = 10;
+    const pageDisplayLimit = 100;
 
     function loadFromStorage(key) {
       if (typeof window === "undefined") {

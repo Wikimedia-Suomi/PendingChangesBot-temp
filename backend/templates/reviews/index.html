@@ -13,8 +13,8 @@
       <section class="hero is-light">
         <div class="hero-body">
           <div class="columns is-vcentered">
-            <div class="column is-3">
-              <h1 class="title is-3">Pending Changes Review</h1>
+            <div class="column is-4">
+              <h1 class="title is-4">Pending Changes Review</h1>
             </div>
             <div class="column">
               <div class="field has-addons">
@@ -33,18 +33,6 @@
                 </div>
                 <div class="control">
                   <button class="button is-warning" @click="clearCache">Clear cache</button>
-                </div>
-              </div>
-              <div class="field is-grouped is-align-items-center mt-3">
-                <label class="label mr-2 mb-0">Sort by</label>
-                <div class="control">
-                  <div class="select">
-                    <select v-model="state.sortOrder">
-                      <option value="newest">Newest pending page first</option>
-                      <option value="oldest">Oldest pending page first</option>
-                      <option value="random">Random order</option>
-                    </select>
-                  </div>
                 </div>
               </div>
             </div>
@@ -88,6 +76,19 @@
         <div v-if="state.pages.length">
           <div class="content">
             <h2 class="title is-4">Pending pages</h2>
+              <div class="field is-grouped is-align-items-center mt-3">
+                <label class="label mr-2 mb-0">Sort by</label>
+                <div class="control">
+                  <div class="select">
+                    <select v-model="state.sortOrder">
+                      <option value="newest">Newest pending page first</option>
+                      <option value="oldest">Oldest pending page first</option>
+                      <option value="random">Random order</option>
+                    </select>
+                  </div>
+                </div>
+              </div>
+
             <p class="help" v-if="hasMorePages">
               Showing the first {{ pageDisplayLimit }} of {{ state.pages.length }} pending pages.
             </p>
