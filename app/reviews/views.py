@@ -37,9 +37,9 @@ def index(request: HttpRequest) -> HttpResponse:
                 "api_endpoint": "https://pl.wikipedia.org/w/api.php",
             },
             {
-                "name": "Portuguese Wikipedia",
-                "code": "pt",
-                "api_endpoint": "https://pt.wikipedia.org/w/api.php",
+                "name": "Finnish Wikipedia",
+                "code": "fi",
+                "api_endpoint": "https://fi.wikipedia.org/w/api.php",
             },
         )
         for defaults in default_wikis:
