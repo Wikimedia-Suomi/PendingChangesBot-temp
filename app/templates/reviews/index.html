@@ -126,9 +126,32 @@
                     </thead>
                     <tbody>
                       <tr v-for="revision in page.revisions" :key="revision.revid">
-                        <td>{{ formatDate(revision.timestamp) }}</td>
                         <td>
-                          {{ revision.user_name || 'Unknown' }}
+                          <a
+                            v-if="buildRevisionDiffUrl(page, revision)"
+                            :href="buildRevisionDiffUrl(page, revision)"
+                            class="has-text-link"
+                            target="_blank"
+                            rel="noreferrer noopener"
+                          >
+                            {{ formatDate(revision.timestamp) }}
+                          </a>
+                          <span v-else>{{ formatDate(revision.timestamp) }}</span>
+                        </td>
+                        <td>
+                          <template v-if="buildUserContributionsUrl(revision)">
+                            <a
+                              :href="buildUserContributionsUrl(revision)"
+                              class="has-text-link"
+                              target="_blank"
+                              rel="noreferrer noopener"
+                            >
+                              {{ revision.user_name }}
+                            </a>
+                          </template>
+                          <template v-else>
+                            {{ revision.user_name || 'Unknown' }}
+                          </template>
                           <span class="tag is-danger is-light" v-if="revision.editor_profile.is_blocked">Blocked</span>
                           <span class="tag is-info is-light" v-if="revision.editor_profile.is_bot">Bot</span>
                           <span class="tag is-success is-light" v-if="revision.editor_profile.is_autopatrolled">Autopatrolled</span>
