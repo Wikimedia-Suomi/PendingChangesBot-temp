@@ -15,6 +15,15 @@ from django.utils import timezone as dj_timezone
 
 from .models import EditorProfile, PendingPage, PendingRevision, Wiki
 
+
+DEFAULT_AUTOREVIEW_GROUPS = {
+    "autoreview",
+    "autoreviewer",
+    "reviewer",
+    "sysop",
+    "editor",
+}
+
 logger = logging.getLogger(__name__)
 
 os.environ.setdefault("PYWIKIBOT2_NO_USER_CONFIG", "1")
@@ -214,10 +223,15 @@ ORDER BY fp_pending_since, rev_id DESC
             return profile
 
         groups = sorted(superset_data.get("user_groups") or [])
+        normalized_groups = {
+            str(group).casefold() for group in groups if isinstance(group, str)
+        }
         profile.usergroups = groups
-        profile.is_bot = "bot" in groups or bool(superset_data.get("rc_bot"))
-        profile.is_autopatrolled = "autopatrolled" in groups
-        profile.is_autoreviewed = bool({"autoreview", "autoreviewer"} & set(groups))
+        profile.is_bot = "bot" in normalized_groups or bool(superset_data.get("rc_bot"))
+        profile.is_autopatrolled = "autopatrolled" in normalized_groups
+        profile.is_autoreviewed = bool(
+            DEFAULT_AUTOREVIEW_GROUPS & normalized_groups
+        )
         profile.is_blocked = bool(superset_data.get("user_blocked", False))
         profile.save(
             update_fields=[

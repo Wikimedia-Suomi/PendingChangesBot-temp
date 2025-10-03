@@ -261,7 +261,7 @@ class ViewTests(TestCase):
         page = PendingPage.objects.create(
             wiki=self.wiki,
             pageid=105,
-            title="Default Rights", 
+            title="Default Rights",
             stable_revid=1,
         )
         PendingRevision.objects.create(
@@ -295,6 +295,45 @@ class ViewTests(TestCase):
         self.assertEqual(len(result["tests"]), 2)
         self.assertEqual(result["tests"][1]["status"], "ok")
         self.assertIn("Autopatrolled", result["tests"][1]["message"])
+
+    def test_api_autoreview_defaults_include_additional_groups(self):
+        page = PendingPage.objects.create(
+            wiki=self.wiki,
+            pageid=106,
+            title="Reviewer Rights",
+            stable_revid=1,
+        )
+        PendingRevision.objects.create(
+            page=page,
+            revid=402,
+            parentid=300,
+            user_name="ReviewUser",
+            user_id=3002,
+            timestamp=datetime.now(timezone.utc) - timedelta(hours=3),
+            fetched_at=datetime.now(timezone.utc),
+            age_at_fetch=timedelta(hours=3),
+            sha1="hash6",
+            comment="Reviewer edit",
+            change_tags=[],
+            wikitext="Some plain text",
+            categories=[],
+            superset_data={"user_groups": ["Reviewer"]},
+        )
+        EditorProfile.objects.create(
+            wiki=self.wiki,
+            username="ReviewUser",
+            usergroups=["Reviewer"],
+            is_autoreviewed=True,
+        )
+
+        url = reverse("api_autoreview", args=[self.wiki.pk, page.pageid])
+        response = self.client.post(url)
+        self.assertEqual(response.status_code, 200)
+        result = response.json()["results"][0]
+        self.assertEqual(result["decision"]["status"], "approve")
+        self.assertEqual(len(result["tests"]), 2)
+        self.assertEqual(result["tests"][1]["status"], "ok")
+        self.assertEqual(result["tests"][1]["id"], "auto-approved-group")
 
     @mock.patch("reviews.models.pywikibot.Site")
     def test_api_autoreview_blocks_on_blocking_categories(self, mock_site):
