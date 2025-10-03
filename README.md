@@ -9,8 +9,8 @@ Vue.js interface for reviewing the results.
 
 1. **Clone the repository**
    ```bash
-   git clone git@github.com:Wikimedia-Suomi/PendingChangesBot-temp.git
-   cd PendingChangesBot-temp
+   git clone git@github.com:Wikimedia-Suomi/PendingChangesBot-ng.git
+   cd PendingChangesBot-ng
    ```
 2. **Create and activate a virtual environment** (recommended)
    ```bash
@@ -22,6 +22,31 @@ Vue.js interface for reviewing the results.
    pip install --upgrade pip
    pip install -r requirements.txt
    ```
+
+## Configuring Pywikibot Superset OAuth
+
+Pywikibot needs to log in to [meta.wikimedia.org](https://meta.wikimedia.org) and approve
+Superset's OAuth client before the SQL queries in `SupersetQuery` will succeed. Follow
+the steps below once per user account that will run PendingChangesBot:
+
+1. **Create a Pywikibot configuration**
+   ```bash
+   echo "usernames['meta']['meta'] = '$YOUR_USERNAME'" > user-config.py
+   ```
+
+3. **Log in with Pywikibot**
+   ```bash
+   python -m pywikibot.scripts.login -site:meta
+   ```
+   The command should report `Logged in on metawiki` and create a persistent login
+   cookie at `~/.pywikibot/pywikibot.lwp`.
+
+4. **Approve Superset's OAuth client**
+   - While still logged in to Meta-Wiki in your browser, open
+     <https://superset.wmcloud.org/login/>.
+   - Authorize the OAuth request for Superset. After approval you should be redirected
+     to Superset's interface.
+
 
 ## Running the application
 
@@ -53,41 +78,6 @@ flake8
 ```
 
 If you are working inside a virtual environment, ensure it is activated before executing the command.
-
-## Configuring Pywikibot Superset OAuth
-
-Pywikibot needs to log in to [meta.wikimedia.org](https://meta.wikimedia.org) and approve
-Superset's OAuth client before the SQL queries in `SupersetQuery` will succeed. Follow
-the steps below once per user account that will run PendingChangesBot:
-
-1. **Create a Pywikibot configuration**
-   ```bash
-   python -m pywikibot.scripts.generate_user_files --family:wikipedia --lang:en
-   ```
-   When prompted, add your Wikimedia username for the `metawiki` site. This creates
-   `user-config.py` under `~/.pywikibot/` (or the directory shown in the prompt).
-
-2. **Set up credentials for Meta-Wiki**
-   - Create a [Bot Password](https://meta.wikimedia.org/wiki/Special:BotPasswords) for your
-     account with at least the `High-volume editing` and `Basic rights` grants.
-   - Store the username (`<username>@<botpassword name>`) and password in
-     `user-password.py` alongside `user-config.py`, e.g.:
-     ```python
-     ('metawiki', '<username>@<botname>', '<bot password>')
-     ```
-
-3. **Log in with Pywikibot**
-   ```bash
-   python -m pywikibot.scripts.login -site:metawiki
-   ```
-   The command should report `Logged in on metawiki` and create a persistent login
-   cookie at `~/.pywikibot/pywikibot.lwp`.
-
-4. **Approve Superset's OAuth client**
-   - While still logged in to Meta-Wiki in your browser, open
-     <https://superset.wmcloud.org/login/>.
-   - Authorize the OAuth request for Superset. After approval you should be redirected
-     to Superset's interface.
 
 After these steps Pywikibot will be able to call Superset's SQL Lab API without running
 into `User not logged in` errors, and PendingChangesBot can fetch pending revisions
