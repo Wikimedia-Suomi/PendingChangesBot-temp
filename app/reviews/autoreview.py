@@ -191,7 +191,7 @@ def _evaluate_revision(
         {
             "id": "blocking-categories",
             "title": "Blocking categories",
-            "status": "not_ok",
+            "status": "ok",
             "message": "The previous version is not in blocking categories.",
         }
     )
