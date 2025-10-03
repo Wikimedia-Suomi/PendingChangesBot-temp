@@ -30,7 +30,6 @@ class RevisionPayload:
     timestamp: datetime
     comment: str
     sha1: str
-    wikitext: str
     tags: list[str]
     categories: list[str]
     superset_data: dict | None = None
@@ -51,7 +50,7 @@ class WikiClient:
             return []
 
         sql_query = f"""
-select 
+select
    page_title,
    page_namespace,
    page_is_redirect,
@@ -66,24 +65,27 @@ select
    rev_sha1,
    comment_text,
    a.actor_name,
+   a.actor_user,
    group_concat(DISTINCT(ctd_name)) as change_tags,
    group_concat(DISTINCT(ug_group)) as user_groups,
    group_concat(DISTINCT(ufg_group)) as user_former_groups,
+   group_concat(DISTINCT(cl_to)) as page_categories,
    rc_bot,
    rc_patrolled
-from 
-   (SELECT * FROM flaggedpages ORDER BY fp_pending_since DESC LIMIT {limit}) as fp, 
-   revision as r 
+from
+   (SELECT * FROM flaggedpages ORDER BY fp_pending_since DESC LIMIT {limit}) as fp,
+   revision as r
        LEFT JOIN change_tag ON r.rev_id=ct_rev_id 
        LEFT JOIN change_tag_def ON ct_tag_id = ctd_id
        LEFT JOIN recentchanges ON rc_this_oldid = r.rev_id AND rc_source="mw.edit"
    , 
-   page as p,
+   page as p
+       LEFT JOIN categorylinks ON cl_from = page_id,
    comment_revision,
    actor_revision as a
    LEFT JOIN user_groups ON a.actor_user=ug_user
    LEFT JOIN user_former_groups ON a.actor_user=ufg_user
-where 
+where
    fp_pending_since IS NOT NULL 
    AND r.rev_page=fp_page_id 
    AND page_id=fp_page_id 
@@ -140,62 +142,17 @@ ORDER BY fp_pending_since, rev_id DESC
                     revid=revid_int,
                     parentid=_parse_optional_int(entry.get("rev_parent_id")),
                     user=entry.get("actor_name"),
-                    userid=None,
+                    userid=_parse_optional_int(entry.get("actor_user")),
                     timestamp=superset_revision_timestamp,
                     comment=entry.get("comment_text", "") or "",
                     sha1=entry.get("rev_sha1", "") or "",
-                    wikitext="",
                     tags=parse_superset_list(entry.get("change_tags")),
-                    categories=[],
+                    categories=parse_superset_list(entry.get("page_categories")),
                     superset_data=_prepare_superset_metadata(entry),
                 )
                 self._save_revision(page, payload_entry)
 
         return pages
-
-    def fetch_revisions_for_page(self, page: PendingPage) -> list[PendingRevision]:
-        """Fetch pending revisions for a single page using Pywikibot."""
-
-        request = self.site.simple_request(
-            action="query",
-            pageids=str(page.pageid),
-            prop="revisions",
-            rvprop="ids|timestamp|user|userid|comment|sha1|tags|content",
-            rvslots="main",
-            rvdir="newer",
-            rvstartid=str(page.stable_revid),
-            format="json",
-            formatversion=2,
-        )
-        data = request.submit()
-        revisions_data = data.get("query", {}).get("pages", [])
-        if not revisions_data:
-            return []
-        page_data = revisions_data[0]
-        revisions: list[PendingRevision] = []
-        for revision in page_data.get("revisions", []):
-            if revision["revid"] <= page.stable_revid:
-                continue
-            text = revision.get("slots", {}).get("main", {}).get("content", "")
-            categories = parse_categories(text)
-            payload = RevisionPayload(
-                revid=revision["revid"],
-                parentid=revision.get("parentid"),
-                user=revision.get("user"),
-                userid=revision.get("userid"),
-                timestamp=datetime.fromisoformat(
-                    revision["timestamp"].replace("Z", "+00:00")
-                ),
-                comment=revision.get("comment", ""),
-                sha1=revision.get("sha1", ""),
-                wikitext=text,
-                tags=revision.get("tags", []),
-                categories=categories,
-            )
-            saved_revision = self._save_revision(page, payload)
-            if saved_revision is not None:
-                revisions.append(saved_revision)
-        return revisions
 
     def _save_revision(
         self, page: PendingPage, payload: RevisionPayload
@@ -221,7 +178,7 @@ ORDER BY fp_pending_since, rev_id DESC
             "sha1": payload.sha1,
             "comment": payload.comment,
             "change_tags": payload.tags,
-            "wikitext": payload.wikitext,
+            "wikitext": "",
             "categories": payload.categories,
         }
         if payload.superset_data is not None:
@@ -232,11 +189,13 @@ ORDER BY fp_pending_since, rev_id DESC
             revid=payload.revid,
             defaults=defaults,
         )
-        if payload.user and payload.superset_data is None:
-            self.ensure_editor_profile(payload.user)
+        if payload.user:
+            self.ensure_editor_profile(payload.user, payload.superset_data)
         return revision
 
-    def ensure_editor_profile(self, username: str) -> EditorProfile:
+    def ensure_editor_profile(
+        self, username: str, superset_data: dict | None = None
+    ) -> EditorProfile:
         profile, created = EditorProfile.objects.get_or_create(
             wiki=self.wiki,
             username=username,
@@ -248,38 +207,29 @@ ORDER BY fp_pending_since, rev_id DESC
                 "is_autoreviewed": False,
             },
         )
-        if created or profile.is_expired:
-            user_info = next(self.site.users([username]), None)
-            if user_info is None:
-                return profile
-            groups = sorted(user_info.get("groups", []))
-            profile.usergroups = groups
-            profile.is_blocked = bool(
-                user_info.get("blocked")
-                or user_info.get("blockid")
-                or ("blocked" in user_info)
-            )
-            profile.is_bot = "bot" in groups
-            profile.is_autopatrolled = "autopatrolled" in groups
-            profile.is_autoreviewed = "autoreview" in groups or "autoreviewer" in groups
-            profile.save(update_fields=[
+        if not superset_data:
+            return profile
+
+        groups = sorted(superset_data.get("user_groups") or [])
+        profile.usergroups = groups
+        profile.is_bot = "bot" in groups or bool(superset_data.get("rc_bot"))
+        profile.is_autopatrolled = "autopatrolled" in groups
+        profile.is_autoreviewed = bool({"autoreview", "autoreviewer"} & set(groups))
+        profile.is_blocked = bool(superset_data.get("user_blocked", False))
+        profile.save(
+            update_fields=[
                 "usergroups",
                 "is_blocked",
                 "is_bot",
                 "is_autopatrolled",
                 "is_autoreviewed",
                 "fetched_at",
-            ])
+            ]
+        )
         return profile
 
     def refresh(self) -> list[PendingPage]:
-        pages = self.fetch_pending_pages()
-        for page in pages:
-            try:
-                self.fetch_revisions_for_page(page)
-            except Exception:  # pragma: no cover - logged for observability
-                logger.exception("Failed to fetch revisions for %s", page.title)
-        return pages
+        return self.fetch_pending_pages()
 
 
 def parse_categories(wikitext: str) -> list[str]:
@@ -335,7 +285,36 @@ def _parse_optional_int(value) -> int | None:
 
 def _prepare_superset_metadata(entry: dict) -> dict:
     metadata = dict(entry)
-    for key in ("change_tags", "user_groups", "user_former_groups"):
+    for key in (
+        "change_tags",
+        "user_groups",
+        "user_former_groups",
+        "page_categories",
+    ):
         if key in metadata and isinstance(metadata[key], str):
             metadata[key] = parse_superset_list(metadata[key])
+    if "actor_user" in metadata:
+        metadata["actor_user"] = _parse_optional_int(metadata.get("actor_user"))
+    if "rc_bot" in metadata:
+        metadata["rc_bot"] = _parse_superset_bool(metadata.get("rc_bot"))
+    if "rc_patrolled" in metadata:
+        metadata["rc_patrolled"] = _parse_superset_bool(metadata.get("rc_patrolled"))
     return metadata
+
+
+def _parse_superset_bool(value) -> bool | None:
+    if value is None:
+        return None
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, (int, float)):
+        return bool(value)
+    if isinstance(value, str):
+        normalized = value.strip().lower()
+        if normalized in {"", "null"}:
+            return None
+        if normalized in {"1", "true", "t", "yes", "y"}:
+            return True
+        if normalized in {"0", "false", "f", "no", "n"}:
+            return False
+    return bool(value)
