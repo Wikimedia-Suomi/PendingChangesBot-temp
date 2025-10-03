@@ -21,7 +21,8 @@ def run_autoreview_for_page(page: PendingPage) -> list[dict]:
     """Run the configured autoreview checks for each pending revision of a page."""
 
     revisions = list(
-        page.revisions.all().order_by("timestamp", "revid")
+        page.revisions.exclude(revid=page.stable_revid)
+        .order_by("timestamp", "revid")
     )  # Oldest revision first.
     usernames = {revision.user_name for revision in revisions if revision.user_name}
     profiles = {

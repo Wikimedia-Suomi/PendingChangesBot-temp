@@ -138,6 +138,8 @@ def _build_revision_payload(revisions, wiki):
 
     payload: list[dict] = []
     for revision in revisions:
+        if revision.page and revision.revid == revision.page.stable_revid:
+            continue
         profile = profiles.get(revision.user_name)
         superset_data = revision.superset_data or {}
         user_groups = profile.usergroups if profile else superset_data.get("user_groups", [])

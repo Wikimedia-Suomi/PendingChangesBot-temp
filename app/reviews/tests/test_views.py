@@ -56,6 +56,21 @@ class ViewTests(TestCase):
             stable_revid=1,
             categories=["Cat"],
         )
+        PendingRevision.objects.create(
+            page=page,
+            revid=1,
+            parentid=None,
+            user_name="Stabilizer",
+            user_id=9,
+            timestamp=datetime.now(timezone.utc) - timedelta(hours=3),
+            fetched_at=datetime.now(timezone.utc),
+            age_at_fetch=timedelta(hours=3),
+            sha1="stable",
+            comment="Stable revision",
+            change_tags=[],
+            wikitext="",
+            categories=[],
+        )
         revision = PendingRevision.objects.create(
             page=page,
             revid=2,
@@ -80,7 +95,9 @@ class ViewTests(TestCase):
         response = self.client.get(reverse("api_pending", args=[self.wiki.pk]))
         payload = response.json()
         self.assertEqual(len(payload["pages"]), 1)
-        rev_payload = payload["pages"][0]["revisions"][0]
+        revisions = payload["pages"][0]["revisions"]
+        self.assertEqual(len(revisions), 1)
+        rev_payload = revisions[0]
         self.assertEqual(rev_payload["revid"], revision.revid)
         self.assertTrue(rev_payload["editor_profile"]["is_autopatrolled"])
         self.assertEqual(rev_payload["change_tags"], ["tag"])
@@ -93,6 +110,21 @@ class ViewTests(TestCase):
             title="Example",
             stable_revid=1,
             categories=["Bar"],
+        )
+        PendingRevision.objects.create(
+            page=page,
+            revid=1,
+            parentid=None,
+            user_name="Stabilizer",
+            user_id=9,
+            timestamp=datetime.now(timezone.utc) - timedelta(hours=6),
+            fetched_at=datetime.now(timezone.utc),
+            age_at_fetch=timedelta(hours=6),
+            sha1="stable",
+            comment="Stable revision",
+            change_tags=[],
+            wikitext="",
+            categories=[],
         )
         revision = PendingRevision.objects.create(
             page=page,

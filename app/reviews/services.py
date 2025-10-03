@@ -89,7 +89,7 @@ where
    AND r.rev_page=fp_page_id 
    AND page_id=fp_page_id 
    and page_namespace=0 
-   AND r.rev_id>fp_stable 
+   AND r.rev_id>=fp_stable
    AND r.rev_actor=a.actor_id
    AND r.rev_comment_id=comment_id
 GROUP BY r.rev_id
