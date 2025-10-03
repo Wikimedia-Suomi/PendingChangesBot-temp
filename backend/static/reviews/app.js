@@ -24,35 +24,121 @@ createApp({
     const initialData = initialElement ? JSON.parse(initialElement.textContent) : [];
 
     const configurationStorageKey = "configurationOpen";
+    const selectedWikiStorageKey = "selectedWikiId";
+    const sortOrderStorageKey = "pendingSortOrder";
 
-    function loadConfigurationOpen() {
+    function loadFromStorage(key) {
       if (typeof window === "undefined") {
-        return false;
+        return null;
       }
       try {
-        return window.localStorage.getItem(configurationStorageKey) === "true";
+        return window.localStorage.getItem(key);
       } catch (error) {
-        return false;
+        return null;
       }
     }
 
-    function persistConfigurationOpen(value) {
+    function saveToStorage(key, value) {
       if (typeof window === "undefined") {
         return;
       }
       try {
-        window.localStorage.setItem(
-          configurationStorageKey,
-          value ? "true" : "false",
-        );
+        if (value === null || typeof value === "undefined") {
+          window.localStorage.removeItem(key);
+        } else {
+          window.localStorage.setItem(key, String(value));
+        }
       } catch (error) {
         // Ignore storage errors.
       }
     }
 
+    function loadConfigurationOpen() {
+      return loadFromStorage(configurationStorageKey) === "true";
+    }
+
+    function persistConfigurationOpen(value) {
+      saveToStorage(configurationStorageKey, value ? "true" : "false");
+    }
+
+    function loadSelectedWikiId(wikis) {
+      if (!Array.isArray(wikis) || !wikis.length) {
+        return "";
+      }
+      const storedValue = loadFromStorage(selectedWikiStorageKey);
+      if (storedValue === null) {
+        return wikis[0].id;
+      }
+      const parsedValue = Number(storedValue);
+      if (!Number.isNaN(parsedValue)) {
+        const matchedWiki = wikis.find((wiki) => wiki.id === parsedValue || Number(wiki.id) === parsedValue);
+        if (matchedWiki) {
+          return matchedWiki.id;
+        }
+      }
+      return wikis[0].id;
+    }
+
+    function persistSelectedWikiId(value) {
+      if (value === "") {
+        saveToStorage(selectedWikiStorageKey, null);
+        return;
+      }
+      saveToStorage(selectedWikiStorageKey, value);
+    }
+
+    function loadSortOrder() {
+      const storedValue = loadFromStorage(sortOrderStorageKey);
+      if (storedValue === "newest" || storedValue === "oldest" || storedValue === "random") {
+        return storedValue;
+      }
+      return "newest";
+    }
+
+    function persistSortOrder(value) {
+      saveToStorage(sortOrderStorageKey, value);
+    }
+
+    function getPendingTimestamp(page) {
+      if (!page || !page.pending_since) {
+        return 0;
+      }
+      const timestamp = new Date(page.pending_since).getTime();
+      return Number.isNaN(timestamp) ? 0 : timestamp;
+    }
+
+    function shufflePages(pages) {
+      const shuffled = [...pages];
+      for (let index = shuffled.length - 1; index > 0; index -= 1) {
+        const swapIndex = Math.floor(Math.random() * (index + 1));
+        [shuffled[index], shuffled[swapIndex]] = [shuffled[swapIndex], shuffled[index]];
+      }
+      return shuffled;
+    }
+
+    function sortPages(pages, order) {
+      if (!Array.isArray(pages)) {
+        return [];
+      }
+      if (order === "random") {
+        return shufflePages(pages);
+      }
+      const sorted = [...pages];
+      sorted.sort((first, second) => {
+        const firstTimestamp = getPendingTimestamp(first);
+        const secondTimestamp = getPendingTimestamp(second);
+        if (order === "oldest") {
+          return firstTimestamp - secondTimestamp;
+        }
+        return secondTimestamp - firstTimestamp;
+      });
+      return sorted;
+    }
+
     const state = reactive({
       wikis: initialData,
-      selectedWikiId: initialData.length ? initialData[0].id : "",
+      selectedWikiId: initialData.length ? loadSelectedWikiId(initialData) : "",
+      sortOrder: loadSortOrder(),
       pages: [],
       loading: false,
       error: "",
@@ -132,7 +218,7 @@ createApp({
           }),
         );
         if (wikiId === state.selectedWikiId) {
-          state.pages = pagesWithRevisions;
+          state.pages = sortPages(pagesWithRevisions, state.sortOrder);
         }
       } catch (error) {
         state.pages = [];
@@ -234,6 +320,23 @@ createApp({
       () => state.configurationOpen,
       (newValue) => {
         persistConfigurationOpen(newValue);
+      },
+      { immediate: true },
+    );
+
+    watch(
+      () => state.selectedWikiId,
+      (newValue) => {
+        persistSelectedWikiId(newValue);
+      },
+      { immediate: true },
+    );
+
+    watch(
+      () => state.sortOrder,
+      (newValue) => {
+        state.pages = sortPages(state.pages, newValue);
+        persistSortOrder(newValue);
       },
       { immediate: true },
     );

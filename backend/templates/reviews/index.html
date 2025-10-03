@@ -35,6 +35,18 @@
                   <button class="button is-warning" @click="clearCache">Clear cache</button>
                 </div>
               </div>
+              <div class="field is-grouped is-align-items-center mt-3">
+                <label class="label mr-2 mb-0">Sort by</label>
+                <div class="control">
+                  <div class="select">
+                    <select v-model="state.sortOrder">
+                      <option value="newest">Newest pending page first</option>
+                      <option value="oldest">Oldest pending page first</option>
+                      <option value="random">Random order</option>
+                    </select>
+                  </div>
+                </div>
+              </div>
             </div>
           </div>
         </div>
