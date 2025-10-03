@@ -299,22 +299,62 @@ createApp({
       return title.replace(/_/g, " ");
     }
 
-    function buildLatestRevisionUrl(page) {
-      if (!page || !page.title) {
-        return "";
-      }
+    function getWikiOrigin() {
       const wiki = currentWiki.value;
       if (!wiki || !wiki.api_endpoint) {
         return "";
       }
-      const normalizedTitle = page.title.replace(/ /g, "_");
-      const encodedTitle = encodeURIComponent(normalizedTitle);
       try {
         const apiUrl = new URL(wiki.api_endpoint);
-        return `${apiUrl.origin}/wiki/${encodedTitle}`;
+        return apiUrl.origin;
       } catch (error) {
-        return `/wiki/${encodedTitle}`;
+        return "";
       }
+    }
+
+    function buildLatestRevisionUrl(page) {
+      if (!page || !page.title) {
+        return "";
+      }
+      const normalizedTitle = page.title.replace(/ /g, "_");
+      const encodedTitle = encodeURIComponent(normalizedTitle);
+      const origin = getWikiOrigin();
+      if (origin) {
+        return `${origin}/wiki/${encodedTitle}`;
+      }
+      return `/wiki/${encodedTitle}`;
+    }
+
+    function buildRevisionDiffUrl(page, revision) {
+      if (!revision || !revision.revid) {
+        return "";
+      }
+      const params = new URLSearchParams({ diff: revision.revid });
+      const parentId = Number(revision.parentid);
+      if (!Number.isNaN(parentId) && parentId > 0) {
+        params.set("oldid", parentId);
+      } else if (page && page.stable_revid) {
+        const stableId = Number(page.stable_revid);
+        if (!Number.isNaN(stableId) && stableId > 0) {
+          params.set("oldid", stableId);
+        }
+      }
+      const origin = getWikiOrigin();
+      const baseUrl = origin ? `${origin}/w/index.php` : "/w/index.php";
+      return `${baseUrl}?${params.toString()}`;
+    }
+
+    function buildUserContributionsUrl(revision) {
+      if (!revision || !revision.user_name) {
+        return "";
+      }
+      const origin = getWikiOrigin();
+      const normalized = revision.user_name.replace(/ /g, "_");
+      const encoded = encodeURIComponent(normalized);
+      if (origin) {
+        return `${origin}/wiki/Special:Contributions/${encoded}`;
+      }
+      return `/wiki/Special:Contributions/${encoded}`;
     }
 
     function toggleConfiguration() {
@@ -370,6 +410,8 @@ createApp({
       toggleConfiguration,
       formatTitle,
       buildLatestRevisionUrl,
+      buildRevisionDiffUrl,
+      buildUserContributionsUrl,
     };
   },
 }).mount("#app");
