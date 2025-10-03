@@ -97,6 +97,7 @@ class WikiClientTests(TestCase):
         self.assertIsNotNone(page.pending_since)
         sql_argument = self.mock_superset.query.call_args[0][0]
         self.assertIn("LIMIT 10) as fp", sql_argument)
+        self.assertIn("r.rev_id>=fp_stable", sql_argument)
         revision = PendingRevision.objects.get()
         self.assertEqual(revision.revid, 11)
         self.assertEqual(revision.comment, "Superset edit")
@@ -106,6 +107,46 @@ class WikiClientTests(TestCase):
         self.assertEqual(revision.user_id, 321)
         self.assertTrue(revision.superset_data["rc_bot"])
         self.assertEqual(revision.superset_data["page_categories"], ["Foo", "Bar"])
+
+    def test_fetch_pending_pages_includes_stable_revision_record(self):
+        self.mock_superset.query.return_value = [
+            {
+                "fp_page_id": 555,
+                "page_title": "WithStable",
+                "fp_stable": 30,
+                "fp_pending_since": "2024-01-01T00:00:00Z",
+                "rev_id": 30,
+                "rev_timestamp": "2024-01-01 00:00:00",
+                "rev_parent_id": 29,
+                "comment_text": "Stable",
+                "rev_sha1": "stable",
+                "actor_name": "StableUser",
+                "actor_user": 100,
+            },
+            {
+                "fp_page_id": 555,
+                "page_title": "WithStable",
+                "fp_stable": 30,
+                "fp_pending_since": "2024-01-01T00:00:00Z",
+                "rev_id": 31,
+                "rev_timestamp": "2024-01-02 00:00:00",
+                "rev_parent_id": 30,
+                "comment_text": "Pending",
+                "rev_sha1": "pending",
+                "actor_name": "PendingUser",
+                "actor_user": 101,
+            },
+        ]
+
+        client = WikiClient(self.wiki)
+        client.fetch_pending_pages(limit=2)
+
+        page = PendingPage.objects.get(pageid=555)
+        revisions = list(
+            PendingRevision.objects.filter(page=page).order_by("revid")
+        )
+        self.assertEqual([30, 31], [revision.revid for revision in revisions])
+        self.assertEqual(page.stable_revid, 30)
 
     def test_fetch_pending_pages_hydrates_editor_profile(self):
         self.mock_superset.query.return_value = [
