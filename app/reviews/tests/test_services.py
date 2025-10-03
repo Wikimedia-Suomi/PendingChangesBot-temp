@@ -177,6 +177,18 @@ class WikiClientTests(TestCase):
         self.assertTrue(profile.is_autoreviewed)
         self.assertFalse(profile.is_autopatrolled)
 
+    def test_ensure_editor_profile_marks_additional_autoreview_groups(self):
+        client = WikiClient(self.wiki)
+        profile = client.ensure_editor_profile(
+            "ReviewUser",
+            superset_data={"user_groups": ["Reviewer", "Sysop", "Editor"]},
+        )
+
+        self.assertEqual(profile.usergroups, ["Editor", "Reviewer", "Sysop"])
+        self.assertTrue(profile.is_autoreviewed)
+        self.assertFalse(profile.is_autopatrolled)
+        self.assertFalse(profile.is_bot)
+
 
 class RefreshWorkflowTests(TestCase):
     @mock.patch("reviews.services.SupersetQuery")
