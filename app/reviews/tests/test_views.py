@@ -26,7 +26,7 @@ class ViewTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, "Pending Changes Review")
         codes = list(Wiki.objects.values_list("code", flat=True))
-        self.assertCountEqual(codes, ["de", "en", "pl", "pt"])
+        self.assertCountEqual(codes, ["de", "en", "pl", "fi"])
 
     @mock.patch("reviews.views.WikiClient")
     def test_api_refresh_returns_error_on_failure(self, mock_client):
@@ -143,3 +143,193 @@ class ViewTests(TestCase):
         config.refresh_from_db()
         self.assertEqual(config.blocking_categories, ["Foo"])
         self.assertEqual(config.auto_approved_groups, ["sysop"])
+
+    def test_api_autoreview_marks_bot_revision_auto_approvable(self):
+        page = PendingPage.objects.create(
+            wiki=self.wiki,
+            pageid=100,
+            title="Bot Page",
+            stable_revid=1,
+        )
+        PendingRevision.objects.create(
+            page=page,
+            revid=200,
+            parentid=150,
+            user_name="HelpfulBot",
+            user_id=999,
+            timestamp=datetime.now(timezone.utc) - timedelta(days=1),
+            fetched_at=datetime.now(timezone.utc),
+            age_at_fetch=timedelta(days=1),
+            sha1="hash",
+            comment="Automated edit",
+            change_tags=[],
+            wikitext="",
+            categories=[],
+            superset_data={"user_groups": ["bot"], "rc_bot": True},
+        )
+
+        url = reverse("api_autoreview", args=[self.wiki.pk, page.pageid])
+        response = self.client.post(url)
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertEqual(data["mode"], "dry-run")
+        self.assertEqual(len(data["results"]), 1)
+        result = data["results"][0]
+        self.assertEqual(result["decision"]["status"], "approve")
+        self.assertEqual(len(result["tests"]), 1)
+        self.assertEqual(result["tests"][0]["status"], "passed")
+        self.assertEqual(result["tests"][0]["id"], "bot-user")
+
+    def test_api_autoreview_allows_configured_user_groups(self):
+        config = self.wiki.configuration
+        config.auto_approved_groups = ["sysop"]
+        config.save(update_fields=["auto_approved_groups"])
+
+        page = PendingPage.objects.create(
+            wiki=self.wiki,
+            pageid=101,
+            title="Group Page",
+            stable_revid=1,
+        )
+        PendingRevision.objects.create(
+            page=page,
+            revid=201,
+            parentid=150,
+            user_name="AdminUser",
+            user_id=1000,
+            timestamp=datetime.now(timezone.utc) - timedelta(hours=5),
+            fetched_at=datetime.now(timezone.utc),
+            age_at_fetch=timedelta(hours=5),
+            sha1="hash2",
+            comment="Admin edit",
+            change_tags=[],
+            wikitext="",
+            categories=[],
+            superset_data={"user_groups": ["Sysop"]},
+        )
+
+        url = reverse("api_autoreview", args=[self.wiki.pk, page.pageid])
+        response = self.client.post(url)
+        self.assertEqual(response.status_code, 200)
+        result = response.json()["results"][0]
+        self.assertEqual(result["decision"]["status"], "approve")
+        self.assertEqual(len(result["tests"]), 2)
+        self.assertEqual(result["tests"][1]["status"], "passed")
+        self.assertEqual(result["tests"][1]["id"], "auto-approved-group")
+
+    def test_api_autoreview_blocks_on_blocking_categories(self):
+        config = self.wiki.configuration
+        config.blocking_categories = ["Secret"]
+        config.save(update_fields=["blocking_categories"])
+
+        page = PendingPage.objects.create(
+            wiki=self.wiki,
+            pageid=102,
+            title="Blocked Page",
+            stable_revid=1,
+        )
+        PendingRevision.objects.create(
+            page=page,
+            revid=202,
+            parentid=160,
+            user_name="RegularUser",
+            user_id=1001,
+            timestamp=datetime.now(timezone.utc) - timedelta(hours=3),
+            fetched_at=datetime.now(timezone.utc),
+            age_at_fetch=timedelta(hours=3),
+            sha1="hash3",
+            comment="Edit",
+            change_tags=[],
+            wikitext="",
+            categories=["Secret"],
+            superset_data={},
+        )
+
+        url = reverse("api_autoreview", args=[self.wiki.pk, page.pageid])
+        response = self.client.post(url)
+        self.assertEqual(response.status_code, 200)
+        result = response.json()["results"][0]
+        self.assertEqual(result["decision"]["status"], "blocked")
+        self.assertEqual(len(result["tests"]), 3)
+        self.assertEqual(result["tests"][2]["status"], "failed")
+        self.assertEqual(result["tests"][2]["id"], "blocking-categories")
+
+    def test_api_autoreview_requires_manual_review_when_no_rules_apply(self):
+        page = PendingPage.objects.create(
+            wiki=self.wiki,
+            pageid=103,
+            title="Manual Page",
+            stable_revid=1,
+        )
+        PendingRevision.objects.create(
+            page=page,
+            revid=203,
+            parentid=170,
+            user_name="Editor",
+            user_id=1002,
+            timestamp=datetime.now(timezone.utc) - timedelta(hours=2),
+            fetched_at=datetime.now(timezone.utc),
+            age_at_fetch=timedelta(hours=2),
+            sha1="hash4",
+            comment="Edit",
+            change_tags=[],
+            wikitext="",
+            categories=["General"],
+            superset_data={"user_groups": ["user"]},
+        )
+
+        url = reverse("api_autoreview", args=[self.wiki.pk, page.pageid])
+        response = self.client.post(url)
+        self.assertEqual(response.status_code, 200)
+        result = response.json()["results"][0]
+        self.assertEqual(result["decision"]["status"], "manual")
+        self.assertEqual(len(result["tests"]), 3)
+        self.assertEqual(result["tests"][2]["status"], "passed")
+
+    def test_api_autoreview_orders_revisions_from_oldest_to_newest(self):
+        page = PendingPage.objects.create(
+            wiki=self.wiki,
+            pageid=104,
+            title="Multiple Revisions",
+            stable_revid=1,
+        )
+        older_timestamp = datetime.now(timezone.utc) - timedelta(days=2)
+        newer_timestamp = datetime.now(timezone.utc) - timedelta(days=1)
+        PendingRevision.objects.create(
+            page=page,
+            revid=301,
+            parentid=200,
+            user_name="Editor1",
+            user_id=2001,
+            timestamp=older_timestamp,
+            fetched_at=datetime.now(timezone.utc),
+            age_at_fetch=timedelta(days=2),
+            sha1="sha-old",
+            comment="Old",
+            change_tags=[],
+            wikitext="",
+            categories=[],
+            superset_data={"user_groups": ["user"]},
+        )
+        PendingRevision.objects.create(
+            page=page,
+            revid=302,
+            parentid=301,
+            user_name="Editor2",
+            user_id=2002,
+            timestamp=newer_timestamp,
+            fetched_at=datetime.now(timezone.utc),
+            age_at_fetch=timedelta(days=1),
+            sha1="sha-new",
+            comment="New",
+            change_tags=[],
+            wikitext="",
+            categories=[],
+            superset_data={"user_groups": ["user"]},
+        )
+
+        url = reverse("api_autoreview", args=[self.wiki.pk, page.pageid])
+        response = self.client.post(url)
+        self.assertEqual(response.status_code, 200)
+        results = response.json()["results"]
+        self.assertEqual([result["revid"] for result in results], [301, 302])

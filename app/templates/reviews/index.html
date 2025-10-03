@@ -114,6 +114,16 @@
                 </p>
               </header>
               <div class="card-content">
+                <div class="is-flex is-justify-content-flex-end mb-3">
+                  <button
+                    class="button is-primary is-light"
+                    :class="{ 'is-loading': isAutoreviewRunning(page) }"
+                    @click="runAutoreview(page)"
+                    :disabled="isAutoreviewRunning(page)"
+                  >
+                    Autoreview edits
+                  </button>
+                </div>
                 <div class="table-container">
                   <table class="table is-fullwidth is-striped">
                     <thead>
@@ -125,43 +135,60 @@
                       </tr>
                     </thead>
                     <tbody>
-                      <tr v-for="revision in page.revisions" :key="revision.revid">
-                        <td>
-                          <a
-                            v-if="buildRevisionDiffUrl(page, revision)"
-                            :href="buildRevisionDiffUrl(page, revision)"
-                            class="has-text-link"
-                            target="_blank"
-                            rel="noreferrer noopener"
-                          >
-                            {{ formatDate(revision.timestamp) }}
-                          </a>
-                          <span v-else>{{ formatDate(revision.timestamp) }}</span>
-                        </td>
-                        <td>
-                          <template v-if="buildUserContributionsUrl(revision)">
+                      <template v-for="revision in page.revisions" :key="revision.revid">
+                        <tr>
+                          <td>
                             <a
-                              :href="buildUserContributionsUrl(revision)"
+                              v-if="buildRevisionDiffUrl(page, revision)"
+                              :href="buildRevisionDiffUrl(page, revision)"
                               class="has-text-link"
                               target="_blank"
                               rel="noreferrer noopener"
                             >
-                              {{ revision.user_name }}
+                              {{ formatDate(revision.timestamp) }}
                             </a>
-                          </template>
-                          <template v-else>
-                            {{ revision.user_name || 'Unknown' }}
-                          </template>
-                          <span class="tag is-danger is-light" v-if="revision.editor_profile.is_blocked">Blocked</span>
-                          <span class="tag is-info is-light" v-if="revision.editor_profile.is_bot">Bot</span>
-                          <span class="tag is-success is-light" v-if="revision.editor_profile.is_autopatrolled">Autopatrolled</span>
-                          <span class="tag is-success is-light" v-if="revision.editor_profile.is_autoreviewed">Autoreviewed</span>
-                        </td>
-                        <td>{{ revision.comment }}</td>
-                        <td>
-                          <span class="tag" v-for="tag in revision.change_tags" :key="tag">{{ tag }}</span>
-                        </td>
-                      </tr>
+                            <span v-else>{{ formatDate(revision.timestamp) }}</span>
+                          </td>
+                          <td>
+                            <template v-if="buildUserContributionsUrl(revision)">
+                              <a
+                                :href="buildUserContributionsUrl(revision)"
+                                class="has-text-link"
+                                target="_blank"
+                                rel="noreferrer noopener"
+                              >
+                                {{ revision.user_name }}
+                              </a>
+                            </template>
+                            <template v-else>
+                              {{ revision.user_name || 'Unknown' }}
+                            </template>
+                            <span class="tag is-danger is-light" v-if="revision.editor_profile.is_blocked">Blocked</span>
+                            <span class="tag is-info is-light" v-if="revision.editor_profile.is_bot">Bot</span>
+                            <span class="tag is-success is-light" v-if="revision.editor_profile.is_autopatrolled">Autopatrolled</span>
+                            <span class="tag is-success is-light" v-if="revision.editor_profile.is_autoreviewed">Autoreviewed</span>
+                          </td>
+                          <td>{{ revision.comment }}</td>
+                          <td>
+                            <span class="tag" v-for="tag in revision.change_tags" :key="tag">{{ tag }}</span>
+                          </td>
+                        </tr>
+                        <tr v-if="getRevisionReview(page, revision)">
+                          <td colspan="4" class="has-background-light">
+                            <div class="content mb-0">
+                              <p class="has-text-weight-semibold">Autoreview test results</p>
+                              <ul class="mb-2">
+                                <li v-for="test in getRevisionReview(page, revision).tests" :key="test.id" class="mb-1">
+                                  <span class="tag" :class="statusTagClass(test.status)">{{ formatTestStatus(test.status) }}</span>
+                                  <span class="ml-2 has-text-weight-semibold">{{ test.title }}</span>
+                                  <span class="ml-2">{{ test.message }}</span>
+                                </li>
+                              </ul>
+                              <p class="has-text-weight-semibold">{{ formatDecision(getRevisionReview(page, revision).decision) }}</p>
+                            </div>
+                          </td>
+                        </tr>
+                      </template>
                     </tbody>
                   </table>
                 </div>

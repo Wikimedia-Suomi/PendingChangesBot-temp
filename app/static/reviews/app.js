@@ -144,6 +144,8 @@ createApp({
       loading: false,
       error: "",
       configurationOpen: loadConfigurationOpen(),
+      reviewResults: {},
+      runningReviews: {},
     });
 
     const forms = reactive({
@@ -201,7 +203,21 @@ createApp({
       }
     }
 
+    function resetReviewState() {
+      state.reviewResults = {};
+      state.runningReviews = {};
+    }
+
+    function setRunning(pageId, value) {
+      state.runningReviews = { ...state.runningReviews, [pageId]: Boolean(value) };
+    }
+
+    function setReviewResults(pageId, results) {
+      state.reviewResults = { ...state.reviewResults, [pageId]: results };
+    }
+
     async function loadPending() {
+      resetReviewState();
       if (!state.selectedWikiId) {
         state.pages = [];
         return;
@@ -257,6 +273,7 @@ createApp({
           method: "POST",
         });
         state.pages = [];
+        resetReviewState();
       } finally {
         state.loading = false;
       }
@@ -361,6 +378,93 @@ createApp({
       state.configurationOpen = !state.configurationOpen;
     }
 
+    async function runAutoreview(page) {
+      if (!page || !state.selectedWikiId) {
+        return;
+      }
+      const pageId = page.pageid;
+      setRunning(pageId, true);
+      try {
+        const data = await apiRequest(
+          `/api/wikis/${state.selectedWikiId}/pages/${pageId}/autoreview/`,
+          {
+            method: "POST",
+          },
+        );
+        const mapping = {};
+        (data.results || []).forEach((entry) => {
+          if (entry && typeof entry.revid !== "undefined") {
+            mapping[entry.revid] = entry;
+          }
+        });
+        setReviewResults(pageId, mapping);
+      } catch (error) {
+        // Errors are surfaced via apiRequest state handling.
+      } finally {
+        setRunning(pageId, false);
+      }
+    }
+
+    function getRevisionReview(page, revision) {
+      if (!page || !revision) {
+        return null;
+      }
+      const pageResults = state.reviewResults[page.pageid];
+      if (!pageResults) {
+        return null;
+      }
+      return pageResults[revision.revid] || null;
+    }
+
+    function isAutoreviewRunning(page) {
+      if (!page) {
+        return false;
+      }
+      return Boolean(state.runningReviews[page.pageid]);
+    }
+
+    function formatTestStatus(status) {
+      if (status === "passed") {
+        return "Hyväksytty";
+      }
+      if (status === "failed") {
+        return "Hylätty";
+      }
+      if (status === "blocked") {
+        return "Estetty";
+      }
+      if (status === "skipped") {
+        return "Ohitettu";
+      }
+      return status || "";
+    }
+
+    function statusTagClass(status) {
+      if (status === "passed") {
+        return "is-success";
+      }
+      if (status === "failed" || status === "blocked") {
+        return "is-danger";
+      }
+      if (status === "skipped") {
+        return "is-light";
+      }
+      return "is-light";
+    }
+
+    function formatDecision(decision) {
+      if (!decision) {
+        return "";
+      }
+      const label = decision.label || decision.status || "";
+      const reason = decision.reason ? ` – ${decision.reason}` : "";
+      const base = `${label}${reason}`.trim();
+      if (!base) {
+        return "(dry-run)";
+      }
+      return `${base} (dry-run)`;
+    }
+
     watch(
       () => state.configurationOpen,
       (newValue) => {
@@ -373,6 +477,7 @@ createApp({
       () => state.selectedWikiId,
       (newValue) => {
         persistSelectedWikiId(newValue);
+        resetReviewState();
       },
       { immediate: true },
     );
@@ -412,6 +517,12 @@ createApp({
       buildLatestRevisionUrl,
       buildRevisionDiffUrl,
       buildUserContributionsUrl,
+      runAutoreview,
+      getRevisionReview,
+      isAutoreviewRunning,
+      formatTestStatus,
+      statusTagClass,
+      formatDecision,
     };
   },
 }).mount("#app");
